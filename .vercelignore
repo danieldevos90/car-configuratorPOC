@@ -1,0 +1,8 @@
+.next
+node_modules
+glb
+public/models/source
+*.blend
+*.blend1
+*.spp
+*.zip
