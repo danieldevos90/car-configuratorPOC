@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useGLTF } from "@react-three/drei";
 
 useGLTF.setDecoderPath(
@@ -18,6 +25,7 @@ import {
   setPartVisibility,
   tuneVehicleTextureSampling,
 } from "@/lib/materials";
+import { prepareModularVehicleAssembly } from "@/lib/align-modular-vehicle";
 import { collectWheelContacts } from "@/lib/wheel-contacts";
 import { useConfigurator } from "@/store/configurator-store";
 import { WheelContactShadows } from "./WheelContactShadows";
@@ -145,6 +153,9 @@ function VehicleScene({
   const [wheelContacts, setWheelContacts] = useState<Vector3[]>([]);
 
   useLayoutEffect(() => {
+    if (kitScene) {
+      prepareModularVehicleAssembly(baseScene, kitScene);
+    }
     prepareScene(
       baseScene,
       vehicle,
@@ -180,26 +191,37 @@ function VehicleScene({
     textureMaxSize,
   ]);
 
-  const updateContacts = () => {
+  const updateContacts = useCallback(() => {
     setWheelContacts(
       collectWheelContacts(baseScene, kitScene, vehicle, hiddenPartIds),
     );
-  };
+  }, [baseScene, kitScene, vehicle, hiddenPartIds]);
 
   useLayoutEffect(() => {
     const root = group.current;
     if (!root) return;
     root.position.set(0, 0, 0);
-    const box = new Box3().setFromObject(root);
-    const center = box.getCenter(new Vector3());
-    root.position.set(-center.x, -box.min.y, -center.z);
-    box.setFromObject(root);
-    const sized = box.getSize(new Vector3());
+    root.updateMatrixWorld(true);
+
+    const baseBox = new Box3().setFromObject(baseScene);
+    const center = baseBox.getCenter(new Vector3());
+    root.position.set(-center.x, -baseBox.min.y, -center.z);
+
+    const radiusBox = new Box3().setFromObject(baseScene);
+    if (kitScene) radiusBox.union(new Box3().setFromObject(kitScene));
+    const sized = radiusBox.getSize(new Vector3());
     const radius = 0.5 * Math.hypot(sized.x, sized.y, sized.z);
     if (radius > 0.2) setVehicleRadius(radius);
     updateContacts();
     onReady?.();
-  }, [baseScene, kitScene, vehicle, hiddenPartIds, setVehicleRadius, onReady]);
+  }, [
+    baseScene,
+    kitScene,
+    vehicle,
+    setVehicleRadius,
+    onReady,
+    updateContacts,
+  ]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];
@@ -218,7 +240,7 @@ function VehicleScene({
       setPartVisibility(root, part, !hidden.has(part.id));
     }
     updateContacts();
-  }, [hiddenPartIds, vehicle, baseScene, kitScene]);
+  }, [hiddenPartIds, vehicle, baseScene, kitScene, updateContacts]);
 
   const selectableNames = useMemo(() => {
     const names = new Set<string>();

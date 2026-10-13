@@ -80,7 +80,7 @@ export const GELANDE_KIT_PARTS: ConfigPart[] = [
   },
   {
     id: "gelande-wheels",
-    label: "Gelände wheels",
+    label: "Gelände Werke wheels",
     nodeNames: ["New-wheels"],
     category: "wheels",
     defaultVisible: false,

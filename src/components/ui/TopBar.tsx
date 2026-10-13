@@ -1,14 +1,11 @@
 "use client";
 
 import { Gauge, ScanSearch } from "lucide-react";
-import { buildPresetList } from "@/config/build-presets";
 import { vehicles } from "@/config/catalog";
 import { useConfigurator } from "@/store/configurator-store";
 
 export function TopBar() {
-  const buildPresetId = useConfigurator((s) => s.buildPresetId);
   const vehicleId = useConfigurator((s) => s.vehicleId);
-  const setBuildPreset = useConfigurator((s) => s.setBuildPreset);
   const auditOpen = useConfigurator((s) => s.auditOpen);
   const setAuditOpen = useConfigurator((s) => s.setAuditOpen);
   const vehicle = vehicles[vehicleId];
@@ -23,20 +20,9 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="model-switch" role="tablist" aria-label="Build">
-        {buildPresetList.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            role="tab"
-            aria-selected={preset.id === buildPresetId}
-            title={preset.description}
-            className={preset.id === buildPresetId ? "is-active" : ""}
-            onClick={() => setBuildPreset(preset.id)}
-          >
-            {preset.label}
-          </button>
-        ))}
+      <div className="topbar-title" aria-hidden>
+        <p className="topbar-title-main">{vehicle.name}</p>
+        <p className="topbar-title-sub">{vehicle.subtitle}</p>
       </div>
 
       <div className="topbar-meta">

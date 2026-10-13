@@ -12,8 +12,8 @@ import { GELANDE_KIT_PARTS } from "@/config/gelande-kit-parts";
  * public/models/web after `npm run optimize:glb`. The loader prefers
  * the web URL and falls back to the source file.
  *
- * Build presets (OEM vs Retro) pick which GLB loads; parts and exclusive
- * groups toggle visibility inside that asset — see build-presets.ts.
+ * The configured vehicle loads OEM base + optional Gelände kit GLB; exclusive
+ * groups toggle visibility (e.g. wheel sets).
  */
 
 export type VehicleId = "g550" | "retro" | "master" | "configured";
@@ -86,7 +86,7 @@ export type VehicleDefinition = {
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
 /** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
-export const WEB_MODEL_REV = "?v=5";
+export const WEB_MODEL_REV = "?v=9";
 
 const MASTER_OEM_ROOT = "Build_OEM";
 const MASTER_RETRO_ROOT = "Build_Retro";
@@ -328,7 +328,7 @@ const g550Vehicle: VehicleDefinition = {
       },
       {
         id: "wheels",
-        label: "Wheels",
+        label: "Stock wheels",
         nodeNames: [
           "WheelFrLeft",
           "WheelFrRight",

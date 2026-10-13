@@ -300,24 +300,30 @@ export function ConfigRail() {
         <section className="rail-section">
           <h2>Options</h2>
           <p className="hint">
-            OEM base by default. Turn on Gelände Werke parts individually, or use
-            the Gelände preset in the header.
+            OEM base by default. Turn Gelände Werke upgrades on per part below.
           </p>
           {groupedParts.flatMap(([category, parts]) => {
             const oemParts = parts.filter((part) => !part.id.startsWith("gelande-"));
             const gelandeParts = parts.filter((part) => part.id.startsWith("gelande-"));
             const blocks: { title: string; list: typeof parts }[] = [];
-            if (oemParts.length) {
+            if (category === "wheels") {
               blocks.push({
                 title: categoryLabel[category] ?? category,
-                list: oemParts,
+                list: parts,
               });
-            }
-            if (gelandeParts.length) {
-              blocks.push({
-                title: `Gelände · ${categoryLabel[category] ?? category}`,
-                list: gelandeParts,
-              });
+            } else {
+              if (oemParts.length) {
+                blocks.push({
+                  title: categoryLabel[category] ?? category,
+                  list: oemParts,
+                });
+              }
+              if (gelandeParts.length) {
+                blocks.push({
+                  title: `Gelände · ${categoryLabel[category] ?? category}`,
+                  list: gelandeParts,
+                });
+              }
             }
             return blocks.map((block) => (
             <div key={`${category}-${block.title}`} className="part-group">
