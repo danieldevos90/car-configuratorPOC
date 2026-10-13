@@ -149,33 +149,68 @@ function drawableSize(image: unknown): {
   return null;
 }
 
-const downscaled = new WeakMap<object, HTMLCanvasElement>();
+type DrawableSource = {
+  width: number;
+  height: number;
+  source: CanvasImageSource;
+};
 
-/** Shrink decoded maps so mobile GPUs are not holding several 4K textures. */
-export function constrainTextureSize(texture: Texture, maxSize: number) {
-  if (maxSize >= 4096) return;
-  const image = texture.image as unknown;
-  const sized = drawableSize(image);
-  if (!sized) return;
-  if (sized.width <= maxSize && sized.height <= maxSize) return;
+const textureOriginal = new WeakMap<Texture, DrawableSource>();
+const downscaledByMax = new WeakMap<CanvasImageSource, Map<number, HTMLCanvasElement>>();
 
-  const cached = downscaled.get(sized.source as object);
-  if (cached) {
-    texture.image = cached;
-    texture.needsUpdate = true;
-    return;
+function rememberOriginal(texture: Texture, sized: DrawableSource) {
+  if (!textureOriginal.has(texture)) {
+    textureOriginal.set(texture, sized);
   }
+}
 
-  const scale = maxSize / Math.max(sized.width, sized.height);
-  const width = Math.max(1, Math.round(sized.width * scale));
-  const height = Math.max(1, Math.round(sized.height * scale));
+function downscaleTo(
+  original: DrawableSource,
+  maxSize: number,
+): HTMLCanvasElement | null {
+  if (original.width <= maxSize && original.height <= maxSize) {
+    return null;
+  }
+  let byMax = downscaledByMax.get(original.source as CanvasImageSource);
+  if (!byMax) {
+    byMax = new Map();
+    downscaledByMax.set(original.source as CanvasImageSource, byMax);
+  }
+  const cached = byMax.get(maxSize);
+  if (cached) return cached;
+
+  const scale = maxSize / Math.max(original.width, original.height);
+  const width = Math.max(1, Math.round(original.width * scale));
+  const height = Math.max(1, Math.round(original.height * scale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.drawImage(sized.source, 0, 0, width, height);
-  downscaled.set(sized.source as object, canvas);
+  if (!ctx) return null;
+  ctx.drawImage(original.source, 0, 0, width, height);
+  byMax.set(maxSize, canvas);
+  return canvas;
+}
+
+/** Shrink decoded maps so mobile GPUs are not holding several 4K textures. */
+export function constrainTextureSize(texture: Texture, maxSize: number) {
+  const image = texture.image as unknown;
+  const sized = drawableSize(image);
+  if (!sized) return;
+
+  rememberOriginal(texture, sized);
+  const original = textureOriginal.get(texture)!;
+
+  if (original.width <= maxSize && original.height <= maxSize) {
+    if (texture.image !== original.source) {
+      texture.image = original.source;
+      texture.needsUpdate = true;
+    }
+    return;
+  }
+
+  const canvas = downscaleTo(original, maxSize);
+  if (!canvas) return;
   texture.image = canvas;
   texture.needsUpdate = true;
 }

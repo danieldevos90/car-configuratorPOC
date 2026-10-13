@@ -13,8 +13,6 @@ const EXTERIOR_FOV = 32;
 const INTERIOR_FOV = 62;
 const VERTICAL_FOV = (EXTERIOR_FOV * Math.PI) / 180;
 
-const NAVIGATION_DPR_SCALE = 0.72;
-const NAVIGATION_DPR_MAX = 1.35;
 const NAVIGATION_IDLE_MS = 320;
 
 const direction = new Vector3();
@@ -30,6 +28,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
   const cameraId = useConfigurator((s) => s.cameraId);
   const vehicleRadius = useConfigurator((s) => s.vehicleRadius);
   const setSceneNavigating = useConfigurator((s) => s.setSceneNavigating);
+  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const camera = useThree((s) => s.camera);
   const setDpr = useThree((s) => s.setDpr);
   const size = useThree((s) => s.size);
@@ -62,9 +61,11 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
     clearTimeout(navigationIdleRef.current);
     setSceneNavigating(true);
     const [, max] = baseDprRef.current;
-    const scaled = Math.max(1, Math.min(NAVIGATION_DPR_MAX, max * NAVIGATION_DPR_SCALE));
+    const scale = isCompactDevice ? 0.72 : 0.88;
+    const cap = isCompactDevice ? 1.35 : 1.85;
+    const scaled = Math.max(1, Math.min(cap, max * scale));
     setDpr([1, scaled]);
-  }, [setDpr, setSceneNavigating]);
+  }, [isCompactDevice, setDpr, setSceneNavigating]);
 
   useEffect(() => {
     const preset = cameraPresets.find((item) => item.id === cameraId);

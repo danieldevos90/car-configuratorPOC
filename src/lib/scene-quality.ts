@@ -22,10 +22,31 @@ export function isCompactViewport() {
   return !window.matchMedia(DESKTOP_MEDIA).matches;
 }
 
+const DESKTOP_DPR_CAP = 2;
+const MOBILE_DPR_CAP_HIGH = 1.5;
+const MOBILE_DPR_CAP_LITE = 1;
+
+/** Match physical pixels on HiDPI without oversampling the whole framebuffer. */
+export function cappedDevicePixelRatio(cap: number) {
+  if (typeof window === "undefined") return cap;
+  return Math.min(cap, Math.max(1, window.devicePixelRatio || 1));
+}
+
+/** Canvas DPR range: desktop stays sharp; mobile stays within GPU budget. */
+export function sceneDprRange(
+  isCompactDevice: boolean,
+  highDetail: boolean,
+): [number, number] {
+  if (isCompactDevice) {
+    const cap = highDetail ? MOBILE_DPR_CAP_HIGH : MOBILE_DPR_CAP_LITE;
+    return [1, cappedDevicePixelRatio(cap)];
+  }
+  return [1, cappedDevicePixelRatio(DESKTOP_DPR_CAP)];
+}
+
 /**
- * High-detail car/scene extras (grass, clouds, 4K sampling) only on Wi‑Fi /
- * Ethernet. Cellular, Save-Data, and slow effective types stay lite.
- * Safari has no Network Information API — mobile then stays lite.
+ * High-detail scene extras (grass, clouds, HDR sky) on good connections.
+ * Does not gate desktop render sharpness — see textureCap / sceneDprRange.
  */
 export function shouldLoadHighDetail(isCompactDevice: boolean) {
   const connection = getConnection();
@@ -51,7 +72,7 @@ export function shouldLoadHighDetail(isCompactDevice: boolean) {
 
 export function textureCap(isCompactDevice: boolean, highDetail: boolean) {
   if (isCompactDevice) return highDetail ? 1024 : 512;
-  return highDetail ? 4096 : 2048;
+  return 4096;
 }
 
 export function subscribeNetworkQuality(onChange: () => void) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGLTF } from "@react-three/drei";
 
 useGLTF.setDecoderPath(
@@ -18,7 +18,9 @@ import {
   setNamedVisibility,
   tuneVehicleTextureSampling,
 } from "@/lib/materials";
+import { collectWheelContacts } from "@/lib/wheel-contacts";
 import { useConfigurator } from "@/store/configurator-store";
+import { WheelContactShadows } from "./WheelContactShadows";
 
 type VehicleProps = {
   vehicle: VehicleDefinition;
@@ -37,10 +39,13 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
   const caliperId = useConfigurator((s) => s.caliperId);
   const lightsOn = useConfigurator((s) => s.lightsOn);
   const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const highDetail = useConfigurator((s) => s.highDetail);
   const textureMaxSize = useConfigurator((s) => s.textureMaxSize);
   const setSelectedPart = useConfigurator((s) => s.setSelectedPart);
   const setVehicleRadius = useConfigurator((s) => s.setVehicleRadius);
+  const studioId = useConfigurator((s) => s.studioId);
+  const [wheelContacts, setWheelContacts] = useState<Vector3[]>([]);
 
   useLayoutEffect(() => {
     scene.traverse((child) => {
@@ -48,12 +53,12 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
       child.receiveShadow = false;
     });
     sanitizeVehicleMaterials(scene, vehicle);
-    const anisotropy = highDetail
-      ? gl.capabilities.getMaxAnisotropy()
-      : 1;
+    const maxAniso = gl.capabilities.getMaxAnisotropy();
+    const anisotropy =
+      !isCompactDevice || highDetail ? maxAniso : Math.min(8, maxAniso);
     tuneVehicleTextureSampling(scene, anisotropy, textureMaxSize);
     namedRef.current = collectNamedNodes(scene);
-  }, [scene, vehicle, gl, highDetail, textureMaxSize]);
+  }, [scene, vehicle, gl, isCompactDevice, highDetail, textureMaxSize]);
 
   useLayoutEffect(() => {
     const root = group.current;
@@ -66,8 +71,9 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
     const sized = box.getSize(new Vector3());
     const radius = 0.5 * Math.hypot(sized.x, sized.y, sized.z);
     if (radius > 0.2) setVehicleRadius(radius);
+    setWheelContacts(collectWheelContacts(vehicle, namedRef.current));
     onReady?.();
-  }, [scene, setVehicleRadius, onReady]);
+  }, [scene, vehicle, setVehicleRadius, onReady]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];
@@ -85,6 +91,11 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
     const hidden = new Set(hiddenPartIds);
     for (const part of vehicle.parts) {
       setNamedVisibility(namedRef.current, part.nodeNames, !hidden.has(part.id));
+    }
+    if (hidden.has("wheels")) {
+      setWheelContacts([]);
+    } else {
+      setWheelContacts(collectWheelContacts(vehicle, namedRef.current));
     }
   }, [hiddenPartIds, vehicle, scene]);
 
@@ -114,13 +125,24 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
     setSelectedPart(partByNode.get(nodeName) ?? null);
   };
 
+  const outdoor = studioId === "road";
+  const shadowY = outdoor ? 0.056 : 0.019;
+  const shadowOpacity = outdoor ? 0.82 : 0.34;
+
   return (
-    <group
-      ref={group}
-      rotation={[-Math.PI / 2, 0, 0]}
-      onPointerDown={onPointerDown}
-    >
-      <primitive object={scene} />
-    </group>
+    <>
+      <group
+        ref={group}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onPointerDown={onPointerDown}
+      >
+        <primitive object={scene} />
+      </group>
+      <WheelContactShadows
+        contacts={wheelContacts}
+        y={shadowY}
+        opacity={shadowOpacity}
+      />
+    </>
   );
 }
