@@ -1,10 +1,10 @@
 "use client";
 
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
-  Box3,
   DoubleSide,
+  Group,
   Mesh,
   Object3D,
   Texture,
@@ -12,9 +12,9 @@ import {
   NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
-  Vector3,
 } from "three";
-import { isOutdoorRoadMesh, OUTDOOR_FOCUS } from "./outdoor-stage";
+import { useConfigurator } from "@/store/configurator-store";
+import { cullDistantGrass, OUTDOOR_GRASS_CULL } from "./outdoor-stage";
 
 useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
@@ -35,38 +35,6 @@ const PARK = {
   rotation: [0, Math.PI, 0] as [number, number, number],
 };
 
-const carAnchor = new Vector3(0, 0, 0);
-const bounds = new Box3();
-const center = new Vector3();
-
-function distanceXZToCar(mesh: Mesh) {
-  bounds.setFromObject(mesh);
-  bounds.getCenter(center);
-  return Math.hypot(center.x - carAnchor.x, center.z - carAnchor.z);
-}
-
-function cullMeshesAroundCar(root: Object3D) {
-  root.updateMatrixWorld(true);
-  root.traverse((child) => {
-    const mesh = child as Mesh;
-    if (!mesh.isMesh) return;
-
-    const label = `${mesh.name} ${mesh.parent?.name ?? ""}`;
-    if (isOutdoorRoadMesh(label)) {
-      mesh.visible = true;
-      return;
-    }
-
-    const dist = distanceXZToCar(mesh);
-    if (/^Plane$/i.test(mesh.name) && dist > OUTDOOR_FOCUS.detailRadiusXZ) {
-      mesh.visible = false;
-      return;
-    }
-
-    mesh.visible = dist <= OUTDOOR_FOCUS.meshRadiusXZ;
-  });
-}
-
 function tuneForestMaterials(
   root: Object3D,
   soilMap: Texture,
@@ -80,9 +48,11 @@ function tuneForestMaterials(
     const grassy =
       /grass|wheat|leaves/i.test(mesh.name) ||
       materials.some((material) => /grass|wheat/i.test(material.name));
+    // Solid preview cards in the base export; textured clumps live in forest-pine-grass.glb.
     mesh.visible = !grassy;
     mesh.castShadow = false;
     mesh.receiveShadow = !grassy;
+    mesh.frustumCulled = true;
     if (grassy) return;
 
     for (const material of materials) {
@@ -119,24 +89,60 @@ function tuneForestMaterials(
   });
 }
 
+function tuneGrassMaterials(root: Object3D) {
+  root.traverse((child) => {
+    const mesh = child as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = true;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (!(material instanceof MeshStandardMaterial)) continue;
+      material.envMapIntensity = SET_ENV_INTENSITY;
+      material.vertexColors = false;
+      material.side = DoubleSide;
+      material.transparent = false;
+      material.depthWrite = true;
+      material.alphaTest = Math.max(material.alphaTest, 0.2);
+      material.needsUpdate = true;
+    }
+  });
+}
+
 export function ForestPine() {
+  const groupRef = useRef<Group>(null);
+  const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
   const { scene } = useGLTF(FOREST_PINE_URL);
+  const { scene: grass } = useGLTF(FOREST_GRASS_URL);
   const [soilMap, soilNormal, soilRough] = useTexture([
     `/models/web/wet-soil.webp${ASSET_REV}`,
     `/models/web/wet-soil-normal.webp${ASSET_REV}`,
     `/models/web/wet-soil-mr.webp${ASSET_REV}`,
   ]);
 
+  const grassCullRadius = sceneNavigating
+    ? OUTDOOR_GRASS_CULL.radiusNavigatingXZ
+    : OUTDOOR_GRASS_CULL.radiusXZ;
+
   useLayoutEffect(() => {
+    groupRef.current?.updateMatrixWorld(true);
     tuneForestMaterials(scene, soilMap, soilNormal, soilRough);
-    cullMeshesAroundCar(scene);
   }, [scene, soilMap, soilNormal, soilRough]);
 
+  useLayoutEffect(() => {
+    groupRef.current?.updateMatrixWorld(true);
+    tuneGrassMaterials(grass);
+    cullDistantGrass(grass, grassCullRadius);
+  }, [grass, grassCullRadius]);
+
   return (
-    <group position={PARK.position} rotation={PARK.rotation}>
+    <group ref={groupRef} position={PARK.position} rotation={PARK.rotation}>
       <primitive object={scene} />
+      <primitive object={grass} />
     </group>
   );
 }
 
 useGLTF.preload(FOREST_PINE_URL);
+useGLTF.preload(FOREST_GRASS_URL);

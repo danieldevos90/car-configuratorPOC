@@ -77,18 +77,25 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#000000";
-    ctx.filter = "blur(26px)";
-    ctx.beginPath();
-    ctx.roundRect(46, 64, width - 92, height - 128, 46);
-    ctx.fill();
+    const drawBlob = (insetX: number, insetY: number, radius: number, blur: number, alpha: number) => {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#000000";
+      ctx.filter = `blur(${blur}px)`;
+      ctx.beginPath();
+      ctx.roundRect(insetX, insetY, width - insetX * 2, height - insetY * 2, radius);
+      ctx.fill();
+      ctx.restore();
+    };
+    drawBlob(46, 64, 46, 22, 1);
+    drawBlob(72, 96, 36, 10, 0.92);
     const texture = new CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
   }, []);
   if (!map) return null;
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} renderOrder={2}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} renderOrder={12}>
       <planeGeometry args={[2.28, 4.95]} />
       <meshBasicMaterial
         map={map}
@@ -191,8 +198,8 @@ export function Studio({ studioId }: { studioId: StudioId }) {
         </mesh>
       )}
       <FootprintShadow
-        y={road ? 0.025 : 0.008}
-        opacity={showroom ? 0.26 : road ? 0.58 : garage ? 0.42 : night ? 0.5 : 0.36}
+        y={road ? 0.055 : 0.018}
+        opacity={showroom ? 0.42 : road ? 0.88 : garage ? 0.62 : night ? 0.72 : 0.52}
       />
     </>
   );

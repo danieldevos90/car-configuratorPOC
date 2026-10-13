@@ -63,7 +63,7 @@ export type VehicleDefinition = {
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
 /** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
-export const WEB_MODEL_REV = "?v=2";
+export const WEB_MODEL_REV = "?v=3";
 
 export const vehicles: Record<VehicleId, VehicleDefinition> = {
   retro: {
@@ -207,7 +207,7 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
       textureMb: 192.2,
       issues: [
         "Source file is 539 MB — too large for production web delivery.",
-        "6.3M triangles; target web LOD is <400k.",
+        "6.3M triangles are kept in the web export (Meshopt + WebP, textures capped at 4096).",
         "192 MB of uncompressed PNG textures; several exceed 12 MB.",
         "KHR_materials_transmission is applied to almost every material, including paint and plastic.",
         "Duplicate material names: CarPaint, CarPaint (1), PlasticBlack, WheelRimAlumGlossy.",

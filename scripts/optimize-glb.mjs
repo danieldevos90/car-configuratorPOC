@@ -1,11 +1,16 @@
 /**
- * Turns CAD/WIP source GLBs into web-ready assets:
- * weld → simplify → webp textures → Draco.
+ * Turns CAD/WIP source GLBs into web-ready assets without dropping triangles:
+ * weld (identical vertices only) → WebP textures → Meshopt.
+ *
+ * 8K maps are capped at 4096. A decoded 8192² texture is 256 MB of VRAM;
+ * every 4K map in the source is kept at full resolution.
  *
  * Output: public/models/web/<filename>
  * Runtime prefers these files, then falls back to /models/source.
+ * After a successful export, bump WEB_MODEL_REV so the immutable cache
+ * picks up the new bytes.
  */
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -23,10 +28,14 @@ const jobs = [
 for (const file of jobs) {
   const input = join(root, "glb", file);
   const output = join(outDir, file);
+  // Extension must stay .glb. Any other suffix makes gltf-transform
+  // unpack a JSON scene plus external .bin and texture files.
+  const temp = join(outDir, file.replace(/\.glb$/i, ".optimizing.glb"));
   if (!existsSync(input)) {
     console.warn("skip missing", input);
     continue;
   }
+  rmSync(temp, { force: true });
   console.log("optimize", file);
   const result = spawnSync(
     process.execPath,
@@ -34,13 +43,15 @@ for (const file of jobs) {
       cli,
       "optimize",
       input,
-      output,
+      temp,
       "--compress",
-      "draco",
+      "meshopt",
+      "--meshopt-level",
+      "high",
       "--texture-compress",
       "webp",
       "--texture-size",
-      "2048",
+      "4096",
       "--flatten",
       "false",
       "--join",
@@ -50,22 +61,20 @@ for (const file of jobs) {
       "--palette",
       "false",
       "--simplify",
-      "true",
-      "--simplify-ratio",
-      "0.35",
-      "--simplify-error",
-      "0.002",
+      "false",
     ],
     {
       stdio: "inherit",
       env: {
         ...process.env,
-        NODE_OPTIONS: "--max-old-space-size=8192",
+        NODE_OPTIONS: "--max-old-space-size=20480",
       },
     },
   );
   if (result.status !== 0) {
+    rmSync(temp, { force: true });
     console.error("optimize failed", file, result.status);
     process.exit(result.status ?? 1);
   }
+  renameSync(temp, output);
 }
