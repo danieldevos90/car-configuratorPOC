@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { vehicles } from "@/config/catalog";
 import { calipers, interiors, paints } from "@/config/finishes";
+import { DESKTOP_MEDIA } from "@/lib/scene-quality";
 import { useConfigurator } from "@/store/configurator-store";
 
 const tabs = ["Paint", "Interior", "Kit"] as const;
@@ -101,8 +102,8 @@ export function ConfigRail() {
   }, [groupedParts, vehicle.caliperMaterials.length]);
 
   useLayoutEffect(() => {
-    const query = window.matchMedia("(max-width: 900px)");
-    const sync = () => setMobile(query.matches);
+    const query = window.matchMedia(DESKTOP_MEDIA);
+    const sync = () => setMobile(!query.matches);
     sync();
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);

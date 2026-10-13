@@ -27,6 +27,8 @@ type ConfiguratorCanvasProps = {
 export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
   const vehicleId = useConfigurator((s) => s.vehicleId);
   const studioId = useConfigurator((s) => s.studioId);
+  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
+  const highDetail = useConfigurator((s) => s.highDetail);
   const vehicle = vehicles[vehicleId];
   const [resolved, setResolved] = useState<{ url: string; optimized: boolean } | null>(
     null,
@@ -55,9 +57,10 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
       className="scene-canvas"
       dpr={dpr}
       gl={{
-        antialias: true,
-        powerPreference: "high-performance",
+        antialias: !isCompactDevice && highDetail,
+        powerPreference: isCompactDevice ? "low-power" : "high-performance",
         alpha: false,
+        stencil: false,
       }}
       camera={{ fov: 32, near: 0.1, far: 220, position: [7.8, 2.05, 9.2] }}
     >

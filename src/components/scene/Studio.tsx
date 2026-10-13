@@ -5,7 +5,8 @@ import { Cloud, Clouds, Environment } from "@react-three/drei";
 import { CanvasTexture, MeshLambertMaterial } from "three";
 import type { StudioId } from "@/config/finishes";
 import { useConfigurator } from "@/store/configurator-store";
-import { FOREST_SKY_URL, ForestPine } from "./ForestPine";
+import { ForestPine } from "./ForestPine";
+import { FOREST_SKY_URL } from "./outdoor-stage";
 import { GarageFloor } from "./GarageFloor";
 
 const ENV: Record<StudioId, "studio" | "apartment" | "night" | "warehouse" | "forest"> = {
@@ -110,19 +111,21 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
 
 export function Studio({ studioId }: { studioId: StudioId }) {
   const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
+  const highDetail = useConfigurator((s) => s.highDetail);
   const showroom = studioId === "showroom";
   const night = studioId === "night";
   const garage = studioId === "garage";
   const road = studioId === "road";
   const bg = showroom ? "#f4f4f4" : road ? SKY_HAZE : garage ? "#1a1918" : "#000000";
   const floor = showroom ? "#ffffff" : night ? "#0a0a0a" : "#161616";
+  const liteSky = sceneNavigating || !highDetail;
 
   return (
     <>
       {road ? (
         <Suspense fallback={<color attach="background" args={[SKY_HAZE]} />}>
-          <OutdoorSky lite={sceneNavigating} />
-          <SkyClouds lite={sceneNavigating} />
+          <OutdoorSky lite={liteSky} />
+          <SkyClouds lite={liteSky} />
         </Suspense>
       ) : (
         <color attach="background" args={[bg]} />

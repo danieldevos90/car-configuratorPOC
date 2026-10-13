@@ -14,19 +14,17 @@ import {
   SRGBColorSpace,
 } from "three";
 import { useConfigurator } from "@/store/configurator-store";
-import { cullDistantGrass, OUTDOOR_GRASS_CULL } from "./outdoor-stage";
+import {
+  cullDistantGrass,
+  FOREST_GRASS_URL,
+  FOREST_PINE_URL,
+  FOREST_SOIL_URLS,
+  OUTDOOR_GRASS_CULL,
+} from "./outdoor-stage";
 
 useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
 );
-
-/** /models is served immutable (next.config.ts). Bump whenever a forest asset is re-exported. */
-const ASSET_REV = "?v=2";
-
-export const FOREST_PINE_URL = `/models/web/forest-pine.glb${ASSET_REV}`;
-export const FOREST_GRASS_URL = `/models/web/forest-pine-grass.glb${ASSET_REV}`;
-/** Road.blend Nishita world, baked by scripts/bake-forest-sky.py. */
-export const FOREST_SKY_URL = "/sky/forest-pine-sky.hdr";
 
 const SET_ENV_INTENSITY = 0.88;
 
@@ -37,9 +35,7 @@ const PARK = {
 
 function tuneForestMaterials(
   root: Object3D,
-  soilMap: Texture,
-  soilNormal: Texture,
-  soilRough: Texture,
+  soil?: { map: Texture; normal: Texture; rough: Texture },
 ) {
   root.traverse((child) => {
     const mesh = child as Mesh;
@@ -61,20 +57,20 @@ function tuneForestMaterials(
       material.vertexColors = false;
       material.needsUpdate = true;
       const name = material.name.toLowerCase();
-      if (name.includes("soil")) {
-        for (const texture of [soilMap, soilNormal, soilRough]) {
+      if (name.includes("soil") && soil) {
+        for (const texture of [soil.map, soil.normal, soil.rough]) {
           texture.wrapS = RepeatWrapping;
           texture.wrapT = RepeatWrapping;
           texture.anisotropy = 8;
           texture.needsUpdate = true;
         }
-        soilMap.colorSpace = SRGBColorSpace;
-        soilNormal.colorSpace = NoColorSpace;
-        soilRough.colorSpace = NoColorSpace;
-        material.map = soilMap;
-        material.normalMap = soilNormal;
+        soil.map.colorSpace = SRGBColorSpace;
+        soil.normal.colorSpace = NoColorSpace;
+        soil.rough.colorSpace = NoColorSpace;
+        material.map = soil.map;
+        material.normalMap = soil.normal;
         material.normalScale.set(1, -1);
-        material.roughnessMap = soilRough;
+        material.roughnessMap = soil.rough;
         material.metalnessMap = null;
         material.color.set("#ffffff");
         material.metalness = 0;
@@ -110,39 +106,50 @@ function tuneGrassMaterials(root: Object3D) {
   });
 }
 
-export function ForestPine() {
-  const groupRef = useRef<Group>(null);
-  const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
-  const { scene } = useGLTF(FOREST_PINE_URL);
-  const { scene: grass } = useGLTF(FOREST_GRASS_URL);
-  const [soilMap, soilNormal, soilRough] = useTexture([
-    `/models/web/wet-soil.webp${ASSET_REV}`,
-    `/models/web/wet-soil-normal.webp${ASSET_REV}`,
-    `/models/web/wet-soil-mr.webp${ASSET_REV}`,
-  ]);
+function ForestSoil({ scene }: { scene: Object3D }) {
+  const [soilMap, soilNormal, soilRough] = useTexture(FOREST_SOIL_URLS);
 
+  useLayoutEffect(() => {
+    tuneForestMaterials(scene, {
+      map: soilMap,
+      normal: soilNormal,
+      rough: soilRough,
+    });
+  }, [scene, soilMap, soilNormal, soilRough]);
+
+  return null;
+}
+
+function ForestGrass() {
+  const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
+  const { scene: grass } = useGLTF(FOREST_GRASS_URL);
   const grassCullRadius = sceneNavigating
     ? OUTDOOR_GRASS_CULL.radiusNavigatingXZ
     : OUTDOOR_GRASS_CULL.radiusXZ;
 
   useLayoutEffect(() => {
-    groupRef.current?.updateMatrixWorld(true);
-    tuneForestMaterials(scene, soilMap, soilNormal, soilRough);
-  }, [scene, soilMap, soilNormal, soilRough]);
-
-  useLayoutEffect(() => {
-    groupRef.current?.updateMatrixWorld(true);
     tuneGrassMaterials(grass);
     cullDistantGrass(grass, grassCullRadius);
   }, [grass, grassCullRadius]);
 
+  return <primitive object={grass} />;
+}
+
+export function ForestPine() {
+  const groupRef = useRef<Group>(null);
+  const highDetail = useConfigurator((s) => s.highDetail);
+  const { scene } = useGLTF(FOREST_PINE_URL);
+
+  useLayoutEffect(() => {
+    groupRef.current?.updateMatrixWorld(true);
+    if (!highDetail) tuneForestMaterials(scene);
+  }, [scene, highDetail]);
+
   return (
     <group ref={groupRef} position={PARK.position} rotation={PARK.rotation}>
       <primitive object={scene} />
-      <primitive object={grass} />
+      {highDetail ? <ForestSoil scene={scene} /> : null}
+      {highDetail ? <ForestGrass /> : null}
     </group>
   );
 }
-
-useGLTF.preload(FOREST_PINE_URL);
-useGLTF.preload(FOREST_GRASS_URL);

@@ -1,5 +1,18 @@
 import { Box3, Mesh, Object3D, Vector3 } from "three";
 
+/** /models is served immutable (next.config.ts). Bump whenever a forest asset is re-exported. */
+const ASSET_REV = "?v=2";
+
+export const FOREST_PINE_URL = `/models/web/forest-pine.glb${ASSET_REV}`;
+export const FOREST_GRASS_URL = `/models/web/forest-pine-grass.glb${ASSET_REV}`;
+export const FOREST_SOIL_URLS = [
+  `/models/web/wet-soil.webp${ASSET_REV}`,
+  `/models/web/wet-soil-normal.webp${ASSET_REV}`,
+  `/models/web/wet-soil-mr.webp${ASSET_REV}`,
+];
+/** Road.blend Nishita world, baked by scripts/bake-forest-sky.py. */
+export const FOREST_SKY_URL = "/sky/forest-pine-sky.hdr";
+
 /** Grass clumps are the main draw-call cost; trees/road stay full (fog hides the rest). */
 export const OUTDOOR_GRASS_CULL = {
   radiusXZ: 52,

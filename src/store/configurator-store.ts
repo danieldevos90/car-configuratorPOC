@@ -3,6 +3,11 @@
 import { create } from "zustand";
 import { vehicles, type VehicleId } from "@/config/catalog";
 import type { CameraId, StudioId } from "@/config/finishes";
+import {
+  isCompactViewport,
+  shouldLoadHighDetail,
+  textureCap,
+} from "@/lib/scene-quality";
 
 export type ConfigSection = "paint" | "interior" | "kit";
 
@@ -56,6 +61,11 @@ type ConfiguratorState = {
   sceneLoading: boolean;
   /** True while the user drags / zooms the 3D camera (lighter scene + lower DPR). */
   sceneNavigating: boolean;
+  /** Phone / tablet viewport — start in studio, keep the GPU budget low. */
+  isCompactDevice: boolean;
+  /** Wi‑Fi (or desktop without Save-Data): grass, clouds, fuller texture sampling. */
+  highDetail: boolean;
+  textureMaxSize: number;
   setVehicle: (id: VehicleId) => void;
   setPaint: (id: string) => void;
   setInterior: (id: string) => void;
@@ -72,6 +82,8 @@ type ConfiguratorState = {
   setVehicleRadius: (radius: number) => void;
   setSceneLoading: (loading: boolean) => void;
   setSceneNavigating: (navigating: boolean) => void;
+  bootstrapScene: () => void;
+  syncNetworkQuality: () => void;
 };
 
 export const useConfigurator = create<ConfiguratorState>((set, get) => ({
@@ -79,9 +91,9 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   paintId: "gmanufaktur",
   interiorId: "saddle",
   caliperId: "gunmetal",
-  studioId: "road",
-  cameraId: "road",
-  exteriorCameraId: "road",
+  studioId: "studio",
+  cameraId: "hero",
+  exteriorCameraId: "hero",
   configSection: "paint",
   lightsOn: true,
   hiddenPartIds: [],
@@ -91,6 +103,9 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   vehicleRadius: 2.8,
   sceneLoading: true,
   sceneNavigating: false,
+  isCompactDevice: true,
+  highDetail: false,
+  textureMaxSize: 512,
   setVehicle: (id) => {
     const cameraId =
       get().studioId === "road" ? "road" : ("hero" as CameraId);
@@ -232,6 +247,29 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   setVehicleRadius: (radius) => set({ vehicleRadius: radius }),
   setSceneLoading: (loading) => set({ sceneLoading: loading }),
   setSceneNavigating: (navigating) => set({ sceneNavigating: navigating }),
+  bootstrapScene: () => {
+    const isCompactDevice = isCompactViewport();
+    const highDetail = shouldLoadHighDetail(isCompactDevice);
+    const studioId: StudioId = isCompactDevice ? "studio" : "road";
+    const cameraId = defaultExteriorCamera(studioId);
+    set({
+      studioId,
+      cameraId,
+      exteriorCameraId: cameraId,
+      isCompactDevice,
+      highDetail,
+      textureMaxSize: textureCap(isCompactDevice, highDetail),
+      panelOpen: !isCompactDevice,
+    });
+  },
+  syncNetworkQuality: () => {
+    const isCompactDevice = get().isCompactDevice;
+    const highDetail = shouldLoadHighDetail(isCompactDevice);
+    set({
+      highDetail,
+      textureMaxSize: textureCap(isCompactDevice, highDetail),
+    });
+  },
 }));
 
 export function selectVehicle() {

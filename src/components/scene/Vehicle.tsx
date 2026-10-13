@@ -37,6 +37,8 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
   const caliperId = useConfigurator((s) => s.caliperId);
   const lightsOn = useConfigurator((s) => s.lightsOn);
   const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const highDetail = useConfigurator((s) => s.highDetail);
+  const textureMaxSize = useConfigurator((s) => s.textureMaxSize);
   const setSelectedPart = useConfigurator((s) => s.setSelectedPart);
   const setVehicleRadius = useConfigurator((s) => s.setVehicleRadius);
 
@@ -46,9 +48,12 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
       child.receiveShadow = false;
     });
     sanitizeVehicleMaterials(scene, vehicle);
-    tuneVehicleTextureSampling(scene, gl.capabilities.getMaxAnisotropy());
+    const anisotropy = highDetail
+      ? gl.capabilities.getMaxAnisotropy()
+      : 1;
+    tuneVehicleTextureSampling(scene, anisotropy, textureMaxSize);
     namedRef.current = collectNamedNodes(scene);
-  }, [scene, vehicle, gl]);
+  }, [scene, vehicle, gl, highDetail, textureMaxSize]);
 
   useLayoutEffect(() => {
     const root = group.current;

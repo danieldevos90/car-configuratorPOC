@@ -125,8 +125,67 @@ export function applyConfiguratorMaterials(
   }
 }
 
+function drawableSize(image: unknown): {
+  width: number;
+  height: number;
+  source: CanvasImageSource;
+} | null {
+  if (!image || typeof image !== "object") return null;
+  if (!("width" in image) || !("height" in image)) return null;
+  const width = Number((image as { width: number }).width);
+  const height = Number((image as { height: number }).height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+    return null;
+  }
+  if (
+    image instanceof HTMLImageElement ||
+    image instanceof HTMLCanvasElement ||
+    image instanceof HTMLVideoElement ||
+    (typeof ImageBitmap !== "undefined" && image instanceof ImageBitmap) ||
+    (typeof OffscreenCanvas !== "undefined" && image instanceof OffscreenCanvas)
+  ) {
+    return { width, height, source: image };
+  }
+  return null;
+}
+
+const downscaled = new WeakMap<object, HTMLCanvasElement>();
+
+/** Shrink decoded maps so mobile GPUs are not holding several 4K textures. */
+export function constrainTextureSize(texture: Texture, maxSize: number) {
+  if (maxSize >= 4096) return;
+  const image = texture.image as unknown;
+  const sized = drawableSize(image);
+  if (!sized) return;
+  if (sized.width <= maxSize && sized.height <= maxSize) return;
+
+  const cached = downscaled.get(sized.source as object);
+  if (cached) {
+    texture.image = cached;
+    texture.needsUpdate = true;
+    return;
+  }
+
+  const scale = maxSize / Math.max(sized.width, sized.height);
+  const width = Math.max(1, Math.round(sized.width * scale));
+  const height = Math.max(1, Math.round(sized.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.drawImage(sized.source, 0, 0, width, height);
+  downscaled.set(sized.source as object, canvas);
+  texture.image = canvas;
+  texture.needsUpdate = true;
+}
+
 /** Sharper oblique surfaces; call once after the GLB is loaded. */
-export function tuneVehicleTextureSampling(root: Object3D, maxAnisotropy: number) {
+export function tuneVehicleTextureSampling(
+  root: Object3D,
+  maxAnisotropy: number,
+  maxTextureSize = 4096,
+) {
   const anisotropy = Math.min(16, Math.max(1, maxAnisotropy));
   root.traverse((child) => {
     if (!(child instanceof Mesh)) return;
@@ -137,6 +196,7 @@ export function tuneVehicleTextureSampling(root: Object3D, maxAnisotropy: number
       if (!material) continue;
       for (const value of Object.values(material)) {
         if (value instanceof Texture) {
+          constrainTextureSize(value, maxTextureSize);
           value.anisotropy = anisotropy;
           value.needsUpdate = true;
         }

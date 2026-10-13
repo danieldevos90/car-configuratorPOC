@@ -18,10 +18,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cameraPresets, studioPresets, type CameraId } from "@/config/finishes";
+import { DESKTOP_MEDIA } from "@/lib/scene-quality";
 import { useConfigurator } from "@/store/configurator-store";
 
 function isDesktop() {
-  return window.matchMedia("(min-width: 901px)").matches;
+  return window.matchMedia(DESKTOP_MEDIA).matches;
 }
 
 const viewIcons: Record<CameraId, LucideIcon> = {

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from "three";
+import { useConfigurator } from "@/store/configurator-store";
 
 const FLOOR = 16;
 const REPEAT = 3;
@@ -10,8 +11,7 @@ function clamp(value: number) {
   return Math.max(0, Math.min(255, value));
 }
 
-function createGarageFloorTexture() {
-  const size = 1024;
+function createGarageFloorTexture(size: number) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -53,13 +53,15 @@ function createGarageFloorTexture() {
   texture.wrapS = RepeatWrapping;
   texture.wrapT = RepeatWrapping;
   texture.repeat.set(REPEAT, REPEAT);
-  texture.anisotropy = 8;
+  texture.anisotropy = size >= 1024 ? 8 : 1;
   texture.needsUpdate = true;
   return texture;
 }
 
 export function GarageFloor() {
-  const map = useMemo(() => createGarageFloorTexture(), []);
+  const highDetail = useConfigurator((s) => s.highDetail);
+  const size = highDetail ? 1024 : 256;
+  const map = useMemo(() => createGarageFloorTexture(size), [size]);
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.004, 0]} receiveShadow>

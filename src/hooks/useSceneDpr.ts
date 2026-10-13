@@ -1,16 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useConfigurator } from "@/store/configurator-store";
 
-/** Higher DPR on desktop pointers; keeps mobile closer to 1.5 for performance. */
+/** Higher DPR on desktop Wi‑Fi; keeps phones closer to 1× to avoid GPU OOM. */
 export function useSceneDpr(): [number, number] {
-  const [dpr, setDpr] = useState<[number, number]>([1, 1.5]);
-
-  useEffect(() => {
-    const finePointer = window.matchMedia("(pointer: fine)").matches;
-    const narrow = window.matchMedia("(max-width: 768px)").matches;
-    setDpr(finePointer && !narrow ? [1, 2] : [1, 1.5]);
-  }, []);
-
-  return dpr;
+  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
+  const highDetail = useConfigurator((s) => s.highDetail);
+  if (isCompactDevice) return highDetail ? [1, 1.25] : [1, 1];
+  return highDetail ? [1, 2] : [1, 1.5];
 }
