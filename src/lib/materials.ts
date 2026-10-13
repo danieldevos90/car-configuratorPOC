@@ -6,7 +6,7 @@ import {
   type Material,
   type MeshPhysicalMaterial,
 } from "three";
-import type { VehicleDefinition } from "@/config/catalog";
+import type { ConfigPart, VehicleDefinition } from "@/config/catalog";
 import type { Finish } from "@/config/finishes";
 
 const GLASS_HINT = /glass|lens|wind|tint|transpar/i;
@@ -247,6 +247,21 @@ export function setNamedVisibility(
 ) {
   for (const name of nodeNames) {
     const node = namedNodes.get(name);
+    if (node) node.visible = visible;
+  }
+}
+
+export function setPartVisibility(
+  root: Object3D,
+  part: ConfigPart,
+  visible: boolean,
+) {
+  const scope = part.presetRoot
+    ? root.getObjectByName(part.presetRoot)
+    : root;
+  if (!scope) return;
+  for (const name of part.nodeNames) {
+    const node = scope.getObjectByName(name);
     if (node) node.visible = visible;
   }
 }

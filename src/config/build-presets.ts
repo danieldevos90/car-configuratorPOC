@@ -16,15 +16,15 @@ export const buildPresets: Record<BuildPresetId, BuildPreset> = {
   retro: {
     id: "retro",
     label: "Retro",
-    vehicleId: "retro",
-    hiddenPartIds: [],
+    vehicleId: "master",
+    hiddenPartIds: ["preset-oem"],
     description: "Gelände Werke restomod with full kit",
   },
   oem: {
     id: "oem",
     label: "OEM",
-    vehicleId: "g550",
-    hiddenPartIds: [],
+    vehicleId: "master",
+    hiddenPartIds: ["preset-retro"],
     description: "Mercedes-Benz G550 donor geometry",
   },
 };
@@ -32,5 +32,6 @@ export const buildPresets: Record<BuildPresetId, BuildPreset> = {
 export const buildPresetList = Object.values(buildPresets);
 
 export function presetForVehicle(vehicleId: VehicleId): BuildPresetId {
-  return vehicleId === "g550" ? "oem" : "retro";
+  if (vehicleId === "g550") return "oem";
+  return "retro";
 }

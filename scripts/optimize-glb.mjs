@@ -34,6 +34,7 @@ function resolveSourceGlb(file) {
 const jobs = [
   "MB-G550-original-model.glb",
   "WIP-gelande-werke-RETRO.glb",
+  "GW-G550-configurator-master.glb",
 ];
 
 for (const file of jobs) {

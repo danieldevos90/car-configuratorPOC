@@ -43,19 +43,26 @@ function clusterMeshContacts(node: Object3D): Vector3[] {
   return contacts;
 }
 
-/** Ground contact points (world space) for each wheel. */
+/** Ground contact points (world space) for each visible wheel group. */
 export function collectWheelContacts(
+  root: Object3D,
   vehicle: VehicleDefinition,
-  namedNodes: Map<string, Object3D>,
+  hiddenPartIds: readonly string[],
 ): Vector3[] {
-  const wheelPart = vehicle.parts.find((part) => part.id === "wheels");
-  if (!wheelPart) return [];
-
+  const hidden = new Set(hiddenPartIds);
   const contacts: Vector3[] = [];
-  for (const name of wheelPart.nodeNames) {
-    const node = namedNodes.get(name);
-    if (!node) continue;
-    contacts.push(...clusterMeshContacts(node));
+
+  for (const part of vehicle.parts) {
+    if (part.category !== "wheels" || hidden.has(part.id)) continue;
+    const scope = part.presetRoot
+      ? root.getObjectByName(part.presetRoot)
+      : root;
+    if (!scope || !scope.visible) continue;
+    for (const name of part.nodeNames) {
+      const node = scope.getObjectByName(name);
+      if (!node || !node.visible) continue;
+      contacts.push(...clusterMeshContacts(node));
+    }
   }
   return contacts;
 }

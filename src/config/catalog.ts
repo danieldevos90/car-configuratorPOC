@@ -14,7 +14,7 @@
  * groups toggle visibility inside that asset — see build-presets.ts.
  */
 
-export type VehicleId = "g550" | "retro";
+export type VehicleId = "g550" | "retro" | "master";
 
 export type PartCategory =
   | "body"
@@ -31,6 +31,8 @@ export type ConfigPart = {
   category: PartCategory;
   defaultVisible: boolean;
   description?: string;
+  /** Limit node lookup to this root empty (combined master GLB). */
+  presetRoot?: string;
 };
 
 /** Only one part in the group can be visible at a time (e.g. wheel sets). */
@@ -74,10 +76,24 @@ export type VehicleDefinition = {
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
 /** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
-export const WEB_MODEL_REV = "?v=3";
+export const WEB_MODEL_REV = "?v=4";
 
-export const vehicles: Record<VehicleId, VehicleDefinition> = {
-  retro: {
+const MASTER_OEM_ROOT = "Build_OEM";
+const MASTER_RETRO_ROOT = "Build_Retro";
+
+function withPresetRoot(
+  parts: ConfigPart[],
+  presetRoot: string,
+  idPrefix: string,
+): ConfigPart[] {
+  return parts.map((part) => ({
+    ...part,
+    id: `${idPrefix}-${part.id}`,
+    presetRoot,
+  }));
+}
+
+const retroVehicle: VehicleDefinition = {
     id: "retro",
     name: "Gelände Werke RETRO",
     subtitle: "G550 restomod · WIP scene",
@@ -256,8 +272,9 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
         "No animations, cameras, or Draco/meshopt compression.",
       ],
     },
-  },
-  g550: {
+  };
+
+const g550Vehicle: VehicleDefinition = {
     id: "g550",
     name: "Mercedes-Benz G550",
     subtitle: "Original donor model",
@@ -372,7 +389,68 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
         "No animations, cameras, or Draco/meshopt compression.",
       ],
     },
+  };
+
+const masterVehicle: VehicleDefinition = {
+  id: "master",
+  name: "Gelände Werke G550",
+  subtitle: "OEM + Retro in one asset (Blender CLI master)",
+  year: "2026",
+  sourceUrl: `${MODELS_BASE}/source/GW-G550-configurator-master.glb`,
+  webUrl: `${MODELS_BASE}/web/GW-G550-configurator-master.glb${WEB_MODEL_REV}`,
+  paintMaterials: ["CarPaint", "CarPaint White", "CarPaint-retro-G"],
+  accentPaintMaterials: ["CarPaint (1)"],
+  leatherMaterials: retroVehicle.leatherMaterials,
+  caliperMaterials: retroVehicle.caliperMaterials,
+  glassMaterials: retroVehicle.glassMaterials,
+  emissiveMaterials: retroVehicle.emissiveMaterials,
+  exclusiveGroups: [
+    {
+      id: "build",
+      label: "Build",
+      partIds: ["preset-oem", "preset-retro"],
+    },
+  ],
+  parts: [
+    {
+      id: "preset-oem",
+      label: "OEM build",
+      nodeNames: [MASTER_OEM_ROOT],
+      category: "body",
+      defaultVisible: true,
+    },
+    {
+      id: "preset-retro",
+      label: "Retro build",
+      nodeNames: [MASTER_RETRO_ROOT],
+      category: "body",
+      defaultVisible: true,
+    },
+    ...withPresetRoot(g550Vehicle.parts, MASTER_OEM_ROOT, "oem"),
+    ...withPresetRoot(retroVehicle.parts, MASTER_RETRO_ROOT, "retro"),
+  ],
+  audit: {
+    fileName: "GW-G550-configurator-master.glb",
+    sizeMb: 976,
+    triangles: 12_124_526,
+    vertices: 0,
+    nodes: 0,
+    meshes: 0,
+    materials: 0,
+    textures: 41,
+    textureMb: 192.2,
+    issues: [
+      "Combined OEM + Retro from scripts/build-master-vehicle.py — both builds load in GPU memory.",
+      "Run npm run build:master-glb then npm run optimize:glb for web delivery.",
+      "Dedupe overlapping body meshes in Blender before treating as production master.",
+    ],
   },
+};
+
+export const vehicles: Record<VehicleId, VehicleDefinition> = {
+  retro: retroVehicle,
+  g550: g550Vehicle,
+  master: masterVehicle,
 };
 
 export const vehicleList = Object.values(vehicles);

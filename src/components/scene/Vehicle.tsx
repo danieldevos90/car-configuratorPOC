@@ -15,7 +15,7 @@ import {
   collectNamedNodes,
   findNamedAncestor,
   sanitizeVehicleMaterials,
-  setNamedVisibility,
+  setPartVisibility,
   tuneVehicleTextureSampling,
 } from "@/lib/materials";
 import { collectWheelContacts } from "@/lib/wheel-contacts";
@@ -71,9 +71,9 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
     const sized = box.getSize(new Vector3());
     const radius = 0.5 * Math.hypot(sized.x, sized.y, sized.z);
     if (radius > 0.2) setVehicleRadius(radius);
-    setWheelContacts(collectWheelContacts(vehicle, namedRef.current));
+    setWheelContacts(collectWheelContacts(scene, vehicle, hiddenPartIds));
     onReady?.();
-  }, [scene, vehicle, setVehicleRadius, onReady]);
+  }, [scene, vehicle, hiddenPartIds, setVehicleRadius, onReady]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];
@@ -90,13 +90,9 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
   useEffect(() => {
     const hidden = new Set(hiddenPartIds);
     for (const part of vehicle.parts) {
-      setNamedVisibility(namedRef.current, part.nodeNames, !hidden.has(part.id));
+      setPartVisibility(scene, part, !hidden.has(part.id));
     }
-    if (hidden.has("wheels")) {
-      setWheelContacts([]);
-    } else {
-      setWheelContacts(collectWheelContacts(vehicle, namedRef.current));
-    }
+    setWheelContacts(collectWheelContacts(scene, vehicle, hiddenPartIds));
   }, [hiddenPartIds, vehicle, scene]);
 
   const selectableNames = useMemo(() => {
