@@ -1,8 +1,14 @@
 "use client";
 
 import { create } from "zustand";
+import {
+  buildPresets,
+  type BuildPresetId,
+  presetForVehicle,
+} from "@/config/build-presets";
 import { vehicles, type VehicleId } from "@/config/catalog";
 import type { CameraId, StudioId } from "@/config/finishes";
+import { defaultHiddenPartIds, togglePartVisibility } from "@/lib/part-visibility";
 import {
   isCompactViewport,
   shouldLoadHighDetail,
@@ -44,6 +50,7 @@ function enterInteriorView(state: {
 }
 
 type ConfiguratorState = {
+  buildPresetId: BuildPresetId;
   vehicleId: VehicleId;
   paintId: string;
   interiorId: string;
@@ -66,6 +73,8 @@ type ConfiguratorState = {
   /** Wi‑Fi (or desktop without Save-Data): grass, clouds, fuller texture sampling. */
   highDetail: boolean;
   textureMaxSize: number;
+  setBuildPreset: (id: BuildPresetId) => void;
+  /** @deprecated Use setBuildPreset — kept for internal vehicle GLB swaps. */
   setVehicle: (id: VehicleId) => void;
   setPaint: (id: string) => void;
   setInterior: (id: string) => void;
@@ -86,7 +95,21 @@ type ConfiguratorState = {
   syncNetworkQuality: () => void;
 };
 
+function applyBuildPreset(id: BuildPresetId) {
+  const preset = buildPresets[id];
+  const vehicle = vehicles[preset.vehicleId];
+  return {
+    buildPresetId: id,
+    vehicleId: preset.vehicleId,
+    hiddenPartIds: [
+      ...new Set([...defaultHiddenPartIds(vehicle), ...preset.hiddenPartIds]),
+    ],
+    selectedPartId: null,
+  };
+}
+
 export const useConfigurator = create<ConfiguratorState>((set, get) => ({
+  buildPresetId: "retro",
   vehicleId: "retro",
   paintId: "gmanufaktur",
   interiorId: "saddle",
@@ -106,17 +129,18 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   isCompactDevice: true,
   highDetail: false,
   textureMaxSize: 512,
-  setVehicle: (id) => {
+  setBuildPreset: (id) => {
     const cameraId =
       get().studioId === "road" ? "road" : ("hero" as CameraId);
     set({
-      vehicleId: id,
-      hiddenPartIds: [],
-      selectedPartId: null,
+      ...applyBuildPreset(id),
       cameraId,
       exteriorCameraId: cameraId,
       configSection: "paint",
     });
+  },
+  setVehicle: (id) => {
+    get().setBuildPreset(presetForVehicle(id));
   },
   setPaint: (id) => {
     const state = get();
@@ -225,19 +249,22 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   setLightsOn: (on) => set({ lightsOn: on }),
   togglePart: (partId) => {
     const state = get();
-    const hidden = new Set(state.hiddenPartIds);
-    if (hidden.has(partId)) hidden.delete(partId);
-    else hidden.add(partId);
+    const vehicle = vehicles[state.vehicleId];
+    const hiddenPartIds = togglePartVisibility(
+      vehicle,
+      state.hiddenPartIds,
+      partId,
+    );
     if (isInteriorCamera(state.cameraId)) {
       set({
-        hiddenPartIds: [...hidden],
+        hiddenPartIds,
         cameraId: resolveExteriorCamera(state),
         configSection: "kit",
       });
       return;
     }
     set({
-      hiddenPartIds: [...hidden],
+      hiddenPartIds,
       ...(state.configSection !== "kit" ? { configSection: "kit" } : {}),
     });
   },
@@ -260,6 +287,7 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
       highDetail,
       textureMaxSize: textureCap(isCompactDevice, highDetail),
       panelOpen: !isCompactDevice,
+      ...applyBuildPreset(get().buildPresetId),
     });
   },
   syncNetworkQuality: () => {

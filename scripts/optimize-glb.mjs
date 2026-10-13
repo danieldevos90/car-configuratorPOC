@@ -10,7 +10,7 @@
  * After a successful export, bump WEB_MODEL_REV so the immutable cache
  * picks up the new bytes.
  */
-import { mkdirSync, existsSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -20,19 +20,30 @@ const cli = join(root, "node_modules/@gltf-transform/cli/bin/cli.js");
 const outDir = join(root, "public/models/web");
 mkdirSync(outDir, { recursive: true });
 
+function resolveSourceGlb(file) {
+  const candidates = [
+    join(root, "public/models/source", file),
+    join(root, "glb", file),
+  ];
+  for (const path of candidates) {
+    if (existsSync(path)) return path;
+  }
+  return null;
+}
+
 const jobs = [
   "MB-G550-original-model.glb",
   "WIP-gelande-werke-RETRO.glb",
 ];
 
 for (const file of jobs) {
-  const input = join(root, "glb", file);
+  const input = resolveSourceGlb(file);
   const output = join(outDir, file);
   // Extension must stay .glb. Any other suffix makes gltf-transform
   // unpack a JSON scene plus external .bin and texture files.
   const temp = join(outDir, file.replace(/\.glb$/i, ".optimizing.glb"));
-  if (!existsSync(input)) {
-    console.warn("skip missing", input);
+  if (!input) {
+    console.warn("skip missing", file);
     continue;
   }
   rmSync(temp, { force: true });

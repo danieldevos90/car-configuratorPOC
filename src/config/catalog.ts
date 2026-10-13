@@ -6,9 +6,12 @@
  *  2. Paint / leather / calipers → material name patterns
  *  3. Cameras → world-space presets after the Z-up → Y-up correction
  *
- * Source GLBs live in /glb (CAD/WIP). Web variants belong in
+ * Source GLBs live in public/models/source (or /glb). Web variants belong in
  * public/models/web after `npm run optimize:glb`. The loader prefers
  * the web URL and falls back to the source file.
+ *
+ * Build presets (OEM vs Retro) pick which GLB loads; parts and exclusive
+ * groups toggle visibility inside that asset — see build-presets.ts.
  */
 
 export type VehicleId = "g550" | "retro";
@@ -28,6 +31,13 @@ export type ConfigPart = {
   category: PartCategory;
   defaultVisible: boolean;
   description?: string;
+};
+
+/** Only one part in the group can be visible at a time (e.g. wheel sets). */
+export type ExclusivePartGroup = {
+  id: string;
+  label: string;
+  partIds: string[];
 };
 
 export type VehicleAudit = {
@@ -57,6 +67,7 @@ export type VehicleDefinition = {
   glassMaterials: string[];
   emissiveMaterials: string[];
   parts: ConfigPart[];
+  exclusiveGroups?: ExclusivePartGroup[];
   audit: VehicleAudit;
 };
 
@@ -103,6 +114,34 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
       "intLEDAdd",
     ],
     parts: [
+      {
+        id: "body-shell",
+        label: "Body",
+        nodeNames: ["Body", "Mercedes-base-model", "Fenders-front", "Surface-v1"],
+        category: "body",
+        defaultVisible: true,
+      },
+      {
+        id: "doors",
+        label: "Doors",
+        nodeNames: ["DoorFrLeft", "DoorFrRight", "DoorRearLeft", "DoorRearRight"],
+        category: "body",
+        defaultVisible: true,
+      },
+      {
+        id: "bonnet",
+        label: "Bonnet",
+        nodeNames: ["Bonnet"],
+        category: "body",
+        defaultVisible: true,
+      },
+      {
+        id: "trunk",
+        label: "Trunk",
+        nodeNames: ["Trunk"],
+        category: "body",
+        defaultVisible: true,
+      },
       {
         id: "roof-rack",
         label: "Roof rack",
@@ -235,7 +274,7 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
       {
         id: "body",
         label: "Body",
-        nodeNames: ["Body"],
+        nodeNames: ["Body", "Undercarriage"],
         category: "body",
         defaultVisible: true,
       },
@@ -247,16 +286,9 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
         defaultVisible: true,
       },
       {
-        id: "doors-front",
-        label: "Front doors",
-        nodeNames: ["DoorFrLeft", "DoorFrRight"],
-        category: "body",
-        defaultVisible: true,
-      },
-      {
-        id: "doors-rear",
-        label: "Rear doors",
-        nodeNames: ["DoorRearLeft", "DoorRearRight"],
+        id: "doors",
+        label: "Doors",
+        nodeNames: ["DoorFrLeft", "DoorFrRight", "DoorRearLeft", "DoorRearRight"],
         category: "body",
         defaultVisible: true,
       },

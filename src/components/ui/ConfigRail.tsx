@@ -307,19 +307,29 @@ export function ConfigRail() {
                 const on = !hiddenPartIds.includes(part.id);
                 const selected = selectedPartId === part.id;
                 return (
-                  <button
+                  <div
                     key={part.id}
-                    type="button"
                     className={`part-row ${on ? "is-on" : ""} ${selected ? "is-selected" : ""}`}
-                    onClick={() => {
-                      setSelectedPart(part.id);
-                      togglePart(part.id);
-                    }}
-                    aria-pressed={on}
                   >
-                    <span>{part.label}</span>
-                    <small>{part.nodeNames.length} nodes</small>
-                  </button>
+                    <button
+                      type="button"
+                      className="part-row-main"
+                      onClick={() => setSelectedPart(part.id)}
+                      aria-pressed={selected}
+                    >
+                      <span>{part.label}</span>
+                      <small>{part.nodeNames.length} nodes</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="part-row-toggle"
+                      aria-label={`${on ? "Hide" : "Show"} ${part.label}`}
+                      aria-pressed={on}
+                      onClick={() => togglePart(part.id)}
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -334,19 +344,29 @@ export function ConfigRail() {
               const on = !hiddenPartIds.includes(part.id);
               const selected = selectedPartId === part.id;
               return (
-                <button
+                <div
                   key={part.id}
-                  type="button"
                   className={`part-row ${on ? "is-on" : ""} ${selected ? "is-selected" : ""}`}
-                  onClick={() => {
-                    setSelectedPart(part.id);
-                    togglePart(part.id);
-                  }}
-                  aria-pressed={on}
                 >
-                  <span>{part.label}</span>
-                  <small>{part.nodeNames.length}</small>
-                </button>
+                  <button
+                    type="button"
+                    className="part-row-main"
+                    onClick={() => setSelectedPart(part.id)}
+                    aria-pressed={selected}
+                  >
+                    <span>{part.label}</span>
+                    <small>{part.nodeNames.length}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="part-row-toggle"
+                    aria-label={`${on ? "Hide" : "Show"} ${part.label}`}
+                    aria-pressed={on}
+                    onClick={() => togglePart(part.id)}
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                </div>
               );
             })}
           </div>

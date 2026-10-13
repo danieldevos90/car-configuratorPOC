@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -51,10 +51,32 @@ function audit(path) {
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const files = [
-  join(root, "glb/MB-G550-original-model.glb"),
-  join(root, "glb/WIP-gelande-werke-RETRO.glb"),
-];
+
+function resolveAuditPaths(argv) {
+  if (argv.length > 0) return argv.map((path) => join(process.cwd(), path));
+  const names = [
+    "MB-G550-original-model.glb",
+    "WIP-gelande-werke-RETRO.glb",
+  ];
+  const dirs = ["public/models/web", "public/models/source", "glb"];
+  const resolved = [];
+  for (const name of names) {
+    for (const dir of dirs) {
+      const path = join(root, dir, name);
+      if (existsSync(path)) {
+        resolved.push(path);
+        break;
+      }
+    }
+  }
+  return resolved;
+}
+
+const files = resolveAuditPaths(process.argv.slice(2));
+if (files.length === 0) {
+  console.error("No GLB files found to audit.");
+  process.exit(1);
+}
 const report = files.map(audit);
 mkdirSync(join(root, "src/generated"), { recursive: true });
 writeFileSync(
