@@ -1,11 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useConfigurator } from "@/store/configurator-store";
 import { AuditPanel } from "./AuditPanel";
 import { CameraBar } from "./CameraBar";
 import { ConfigRail } from "./ConfigRail";
+import { LoadingOverlay } from "./LoadingOverlay";
+import { DelayedSceneFallback } from "./DelayedSceneFallback";
 import { TopBar } from "./TopBar";
 
 const ConfiguratorCanvas = dynamic(
@@ -13,10 +15,14 @@ const ConfiguratorCanvas = dynamic(
     import("@/components/scene/ConfiguratorCanvas").then(
       (mod) => mod.ConfiguratorCanvas,
     ),
-  { ssr: false, loading: () => <div className="scene-fallback" /> },
+  {
+    ssr: false,
+    loading: () => <DelayedSceneFallback />,
+  },
 );
 
 export function Shell() {
+  const [sceneReady, setSceneReady] = useState(false);
   const panelOpen = useConfigurator((s) => s.panelOpen);
   const auditOpen = useConfigurator((s) => s.auditOpen);
   const studioId = useConfigurator((s) => s.studioId);
@@ -37,7 +43,8 @@ export function Shell() {
       className={`app-shell ${panelOpen ? "is-panel-open" : ""} ${auditOpen ? "is-audit-open" : ""}`}
       data-studio={studioId}
     >
-      <ConfiguratorCanvas />
+      <ConfiguratorCanvas onReady={() => setSceneReady(true)} />
+      <LoadingOverlay sceneReady={sceneReady} />
       <TopBar />
       <ConfigRail />
       <CameraBar />

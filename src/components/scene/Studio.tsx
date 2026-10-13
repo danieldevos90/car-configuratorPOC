@@ -4,6 +4,7 @@ import { Suspense, useMemo } from "react";
 import { Cloud, Clouds, Environment } from "@react-three/drei";
 import { CanvasTexture, MeshLambertMaterial } from "three";
 import type { StudioId } from "@/config/finishes";
+import { useConfigurator } from "@/store/configurator-store";
 import { FOREST_SKY_URL, ForestPine } from "./ForestPine";
 import { GarageFloor } from "./GarageFloor";
 
@@ -15,7 +16,6 @@ const ENV: Record<StudioId, "studio" | "apartment" | "night" | "warehouse" | "fo
   road: "forest",
 };
 
-const SKY = "#6eacdf";
 const SKY_HAZE = "#9ec8ea";
 const SKY_URL = FOREST_SKY_URL;
 
@@ -25,61 +25,42 @@ class SkyCloudMaterial extends MeshLambertMaterial {
   }
 }
 
-/** Photographic sky only. Forest IBL stays on the car. */
-function SkyPhoto() {
+/** Single HDR for sky + car IBL (no second forest preset). */
+function OutdoorSky({ lite }: { lite: boolean }) {
   return (
     <Environment
       files={SKY_URL}
-      background="only"
+      background
       backgroundIntensity={0.95}
-      backgroundRotation={[0, 0, 0]}
-      environmentIntensity={0.85}
+      environmentIntensity={lite ? 0.78 : 0.9}
     />
   );
 }
 
-function SkyClouds() {
+/** Light accents — car stays the hero. */
+function SkyClouds({ lite }: { lite: boolean }) {
+  if (lite) return null;
   return (
-    <Clouds texture="/sky/cloud.png" material={SkyCloudMaterial} limit={80}>
+    <Clouds texture="/sky/cloud.png" material={SkyCloudMaterial} limit={24}>
       <Cloud
         seed={1}
-        position={[-16, 10, -8]}
-        bounds={[16, 2.4, 7]}
-        volume={5}
-        opacity={0.95}
-        speed={0.04}
-        segments={14}
+        position={[-10, 11, -14]}
+        bounds={[12, 2, 5]}
+        volume={4}
+        opacity={0.88}
+        speed={0.02}
+        segments={8}
         color="#ffffff"
       />
       <Cloud
         seed={4}
-        position={[10, 11, -18]}
-        bounds={[14, 2.2, 6]}
-        volume={4.5}
-        opacity={0.9}
-        speed={0.03}
-        segments={12}
+        position={[12, 10.5, -22]}
+        bounds={[10, 1.8, 4]}
+        volume={3.2}
+        opacity={0.8}
+        speed={0.015}
+        segments={8}
         color="#f7fbff"
-      />
-      <Cloud
-        seed={8}
-        position={[-4, 12.5, -32]}
-        bounds={[18, 2.6, 8]}
-        volume={5.5}
-        opacity={0.82}
-        speed={0.025}
-        segments={14}
-        color="#ffffff"
-      />
-      <Cloud
-        seed={12}
-        position={[18, 9.5, 2]}
-        bounds={[12, 2, 5]}
-        volume={3.8}
-        opacity={0.78}
-        speed={0.03}
-        segments={10}
-        color="#ffffff"
       />
     </Clouds>
   );
@@ -121,6 +102,7 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
 }
 
 export function Studio({ studioId }: { studioId: StudioId }) {
+  const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
   const showroom = studioId === "showroom";
   const night = studioId === "night";
   const garage = studioId === "garage";
@@ -131,9 +113,9 @@ export function Studio({ studioId }: { studioId: StudioId }) {
   return (
     <>
       {road ? (
-        <Suspense fallback={<color attach="background" args={[SKY]} />}>
-          <SkyPhoto />
-          <SkyClouds />
+        <Suspense fallback={<color attach="background" args={[SKY_HAZE]} />}>
+          <OutdoorSky lite={sceneNavigating} />
+          <SkyClouds lite={sceneNavigating} />
         </Suspense>
       ) : (
         <color attach="background" args={[bg]} />
@@ -141,9 +123,9 @@ export function Studio({ studioId }: { studioId: StudioId }) {
       <fog
         attach="fog"
         args={[
-          bg,
-          road ? 80 : garage ? 22 : showroom ? 16 : 12,
-          road ? 220 : garage ? 64 : showroom ? 48 : 42,
+          road ? SKY_HAZE : bg,
+          road ? 38 : garage ? 22 : showroom ? 16 : 12,
+          road ? 105 : garage ? 64 : showroom ? 48 : 42,
         ]}
       />
       <hemisphereLight
@@ -180,14 +162,22 @@ export function Studio({ studioId }: { studioId: StudioId }) {
           color={garage ? "#f7f4ee" : "#ffffff"}
         />
       )}
-      <Environment
-        preset={ENV[studioId]}
-        environmentIntensity={showroom ? 0.85 : road ? 0.85 : garage ? 0.42 : night ? 0.2 : 0.55}
-      />
+      {!road ? (
+        <Environment
+          preset={ENV[studioId]}
+          environmentIntensity={
+            showroom ? 0.85 : garage ? 0.42 : night ? 0.2 : 0.55
+          }
+        />
+      ) : null}
       {road ? (
-        <ForestPine />
+        <Suspense fallback={null}>
+          <ForestPine />
+        </Suspense>
       ) : garage ? (
-        <GarageFloor />
+        <Suspense fallback={null}>
+          <GarageFloor />
+        </Suspense>
       ) : (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
           <circleGeometry args={[22, 64]} />

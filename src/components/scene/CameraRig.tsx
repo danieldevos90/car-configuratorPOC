@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { CameraControls } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { PerspectiveCamera, Vector3 } from "three";
@@ -13,25 +13,68 @@ const EXTERIOR_FOV = 32;
 const INTERIOR_FOV = 62;
 const VERTICAL_FOV = (EXTERIOR_FOV * Math.PI) / 180;
 
+const NAVIGATION_DPR_SCALE = 0.72;
+const NAVIGATION_DPR_MAX = 1.35;
+const NAVIGATION_IDLE_MS = 320;
+
 const direction = new Vector3();
 const look = new Vector3();
 const placed = new Vector3();
 
-export function CameraRig() {
+type CameraRigProps = {
+  baseDpr: [number, number];
+};
+
+export function CameraRig({ baseDpr }: CameraRigProps) {
   const controls = useRef<CameraControls>(null);
   const cameraId = useConfigurator((s) => s.cameraId);
   const vehicleRadius = useConfigurator((s) => s.vehicleRadius);
+  const setSceneNavigating = useConfigurator((s) => s.setSceneNavigating);
   const camera = useThree((s) => s.camera);
+  const setDpr = useThree((s) => s.setDpr);
   const size = useThree((s) => s.size);
   const sizeRef = useRef(size);
   sizeRef.current = size;
-  const portrait = size.width > 0 && size.width <= 900 && size.width < size.height;
+  const baseDprRef = useRef(baseDpr);
+  baseDprRef.current = baseDpr;
+  const navigationIdleRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const lastPresetKeyRef = useRef("");
+
+  const portrait =
+    size.width > 0 && size.width <= 900 && size.width < size.height;
   const interior = INTERIOR_VIEWS.has(cameraId);
+
+  useEffect(() => {
+    setDpr(baseDpr);
+  }, [baseDpr, setDpr]);
+
+  const endNavigation = useCallback(() => {
+    clearTimeout(navigationIdleRef.current);
+    navigationIdleRef.current = setTimeout(() => {
+      setSceneNavigating(false);
+      setDpr(baseDprRef.current);
+    }, NAVIGATION_IDLE_MS);
+  }, [setDpr, setSceneNavigating]);
+
+  const beginNavigation = useCallback(() => {
+    clearTimeout(navigationIdleRef.current);
+    setSceneNavigating(true);
+    const [, max] = baseDprRef.current;
+    const scaled = Math.max(1, Math.min(NAVIGATION_DPR_MAX, max * NAVIGATION_DPR_SCALE));
+    setDpr([1, scaled]);
+  }, [setDpr, setSceneNavigating]);
 
   useEffect(() => {
     const preset = cameraPresets.find((item) => item.id === cameraId);
     const rig = controls.current;
     if (!preset || !rig) return;
+
+    const presetKey = `${cameraId}:${portrait}:${vehicleRadius.toFixed(2)}`;
+    if (presetKey === lastPresetKeyRef.current) return;
+    lastPresetKeyRef.current = presetKey;
+
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -62,7 +105,6 @@ export function CameraRig() {
       const distance = Math.min(36, (vehicleRadius * 1.18) / Math.tan(half));
       const aim = preset.id === "road" ? look.set(0, 0.7, 0) : look;
       if (preset.id === "road") {
-        // A longer portrait lens along the 3/4 angle leaves the lane and opens in the pines.
         direction.set(0.1, 0.05, 1);
       } else {
         direction.set(x, y, z).sub(aim);
@@ -86,6 +128,14 @@ export function CameraRig() {
     );
   }, [camera, cameraId, portrait, vehicleRadius]);
 
+  useEffect(
+    () => () => {
+      clearTimeout(navigationIdleRef.current);
+      setSceneNavigating(false);
+    },
+    [setSceneNavigating],
+  );
+
   return (
     <>
       {interior ? (
@@ -99,11 +149,17 @@ export function CameraRig() {
       <CameraControls
         ref={controls}
         makeDefault
+        regress={false}
         minDistance={interior ? 0.18 : 2.2}
         maxDistance={interior ? 2.8 : 40}
         minPolarAngle={interior ? 0.35 : 0}
         maxPolarAngle={interior ? Math.PI / 1.55 : Math.PI / 1.92}
-        smoothTime={0.35}
+        smoothTime={interior ? 0.22 : 0.1}
+        draggingSmoothTime={interior ? 0.12 : 0.06}
+        dollySpeed={interior ? 0.85 : 1.15}
+        dollyToCursor
+        onControlStart={beginNavigation}
+        onControlEnd={endNavigation}
       />
     </>
   );

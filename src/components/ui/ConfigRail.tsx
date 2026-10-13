@@ -1,7 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { vehicles } from "@/config/catalog";
 import { calipers, interiors, paints } from "@/config/finishes";
 import { useConfigurator } from "@/store/configurator-store";
@@ -34,8 +34,19 @@ function chunk<T>(items: T[], size: number) {
   return groups;
 }
 
+const sectionToTab: Record<(typeof tabs)[number], "paint" | "interior" | "kit"> = {
+  Paint: "paint",
+  Interior: "interior",
+  Kit: "kit",
+};
+
+const tabFromSection = {
+  paint: "Paint",
+  interior: "Interior",
+  kit: "Kit",
+} as const;
+
 export function ConfigRail() {
-  const [tab, setTab] = useState<(typeof tabs)[number]>("Paint");
   const [mobile, setMobile] = useState(false);
   const [step, setStep] = useState(0);
   const vehicleId = useConfigurator((s) => s.vehicleId);
@@ -45,13 +56,17 @@ export function ConfigRail() {
   const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
   const selectedPartId = useConfigurator((s) => s.selectedPartId);
   const panelOpen = useConfigurator((s) => s.panelOpen);
+  const setPanelOpen = useConfigurator((s) => s.setPanelOpen);
+  const configSection = useConfigurator((s) => s.configSection);
+  const cameraId = useConfigurator((s) => s.cameraId);
   const setPaint = useConfigurator((s) => s.setPaint);
   const setInterior = useConfigurator((s) => s.setInterior);
-  const setCamera = useConfigurator((s) => s.setCamera);
+  const setConfigSection = useConfigurator((s) => s.setConfigSection);
+  const leaveInteriorCamera = useConfigurator((s) => s.leaveInteriorCamera);
   const setCaliper = useConfigurator((s) => s.setCaliper);
+  const tab = tabFromSection[configSection];
   const togglePart = useConfigurator((s) => s.togglePart);
   const setSelectedPart = useConfigurator((s) => s.setSelectedPart);
-
   const vehicle = vehicles[vehicleId];
   const paint = paints.find((item) => item.id === paintId);
   const groupedParts = useMemo(() => {
@@ -96,10 +111,31 @@ export function ConfigRail() {
   const stepIndex = Math.min(step, Math.max(mobileSteps.length - 1, 0));
   const currentStep = mobileSteps[stepIndex];
 
+  const interiorStepIndex = useMemo(
+    () => mobileSteps.findIndex((item) => item.kind === "interior"),
+    [mobileSteps],
+  );
+
+  useEffect(() => {
+    if (!mobile || interiorStepIndex < 0) return;
+    if (cameraId === "cabin") {
+      if (step !== interiorStepIndex) setStep(interiorStepIndex);
+      return;
+    }
+    if (mobileSteps[step]?.kind === "interior") setStep(0);
+  }, [cameraId, interiorStepIndex, mobile, mobileSteps, step]);
+
   function goToStep(next: number) {
     const clamped = Math.max(0, Math.min(next, mobileSteps.length - 1));
+    const target = mobileSteps[clamped];
     setStep(clamped);
-    if (mobileSteps[clamped]?.kind === "interior") setCamera("cabin");
+    if (target?.kind === "interior") {
+      setConfigSection("interior");
+      return;
+    }
+    leaveInteriorCamera();
+    if (target?.kind === "parts") setConfigSection("kit");
+    else setConfigSection("paint");
   }
 
   if (!vehicle || !currentStep) return null;
@@ -120,6 +156,14 @@ export function ConfigRail() {
 
       {mobile ? (
         <div className="rail-steps" aria-label="Configurator steps">
+          <button
+            type="button"
+            className="rail-close"
+            aria-label="Close configurator"
+            onClick={() => setPanelOpen(false)}
+          >
+            <X size={16} aria-hidden />
+          </button>
           <button
             type="button"
             className="step-nav"
@@ -154,10 +198,7 @@ export function ConfigRail() {
               role="tab"
               aria-selected={tab === item}
               className={tab === item ? "is-active" : ""}
-              onClick={() => {
-                setTab(item);
-                if (item === "Interior") setCamera("cabin");
-              }}
+              onClick={() => setConfigSection(sectionToTab[item])}
             >
               {item}
             </button>

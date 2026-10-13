@@ -14,6 +14,7 @@ import {
   PanelRight,
   Route,
   Scan,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { cameraPresets, studioPresets, type CameraId } from "@/config/finishes";
@@ -47,15 +48,32 @@ export function CameraBar() {
   const [viewsOpen, setViewsOpen] = useState(false);
   const [scenesOpen, setScenesOpen] = useState(false);
 
+  const dockMenuOpen = viewsOpen || scenesOpen;
+
   function closeMobilePanel() {
     if (!isDesktop()) setPanelOpen(false);
   }
 
+  function closeDockMenu() {
+    setViewsOpen(false);
+    setScenesOpen(false);
+  }
+
   return (
     <nav
-      className={`camera-bar ${viewsOpen ? "is-views-open" : ""} ${scenesOpen ? "is-scenes-open" : ""}`}
+      className={`camera-bar ${viewsOpen ? "is-views-open" : ""} ${scenesOpen ? "is-scenes-open" : ""} ${dockMenuOpen ? "is-dock-menu-open" : ""}`}
       aria-label="Views and scenes"
     >
+      {dockMenuOpen && (
+        <button
+          type="button"
+          className="dock-close"
+          aria-label="Close menu"
+          onClick={closeDockMenu}
+        >
+          <X size={18} aria-hidden />
+        </button>
+      )}
       <div
         className="camera-bar-views"
         aria-hidden={!viewsOpen}

@@ -167,7 +167,7 @@ export const calipers: Finish[] = [
 ];
 
 export const studioPresets = [
-  { id: "road", label: "Forest" },
+  { id: "road", label: "Outdoor" },
   { id: "showroom", label: "Atelier" },
   { id: "studio", label: "Studio" },
   { id: "garage", label: "Garage" },
@@ -202,7 +202,7 @@ export const cameraPresets = [
   { id: "top", label: "Plan", position: [0.2, 9.5, 0.1], target: [0, 0, 0] },
   {
     id: "road",
-    label: "Road",
+    label: "Wide",
     position: [6.4, 2.15, 7.4],
     target: [0, 0.65, 0],
   },

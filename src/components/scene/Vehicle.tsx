@@ -6,7 +6,7 @@ import { useGLTF } from "@react-three/drei";
 useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
 );
-import { ThreeEvent } from "@react-three/fiber";
+import { ThreeEvent, useThree } from "@react-three/fiber";
 import { Box3, Group, Object3D, Vector3 } from "three";
 import type { VehicleDefinition } from "@/config/catalog";
 import { calipers, interiors, paints } from "@/config/finishes";
@@ -16,16 +16,19 @@ import {
   findNamedAncestor,
   sanitizeVehicleMaterials,
   setNamedVisibility,
+  tuneVehicleTextureSampling,
 } from "@/lib/materials";
 import { useConfigurator } from "@/store/configurator-store";
 
 type VehicleProps = {
   vehicle: VehicleDefinition;
   url: string;
+  onReady?: () => void;
 };
 
-export function Vehicle({ vehicle, url }: VehicleProps) {
+export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
   const { scene } = useGLTF(url);
+  const gl = useThree((s) => s.gl);
   const group = useRef<Group>(null);
   const namedRef = useRef<Map<string, Object3D>>(new Map());
 
@@ -43,8 +46,9 @@ export function Vehicle({ vehicle, url }: VehicleProps) {
       child.receiveShadow = false;
     });
     sanitizeVehicleMaterials(scene, vehicle);
+    tuneVehicleTextureSampling(scene, gl.capabilities.getMaxAnisotropy());
     namedRef.current = collectNamedNodes(scene);
-  }, [scene, vehicle]);
+  }, [scene, vehicle, gl]);
 
   useLayoutEffect(() => {
     const root = group.current;
@@ -57,7 +61,8 @@ export function Vehicle({ vehicle, url }: VehicleProps) {
     const sized = box.getSize(new Vector3());
     const radius = 0.5 * Math.hypot(sized.x, sized.y, sized.z);
     if (radius > 0.2) setVehicleRadius(radius);
-  }, [scene, setVehicleRadius]);
+    onReady?.();
+  }, [scene, setVehicleRadius, onReady]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];

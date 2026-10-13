@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from "three";
 
-const FLOOR = 48;
-const REPEAT = 6;
+const FLOOR = 16;
+const REPEAT = 3;
 
 function clamp(value: number) {
   return Math.max(0, Math.min(255, value));
@@ -62,28 +62,14 @@ export function GarageFloor() {
   const map = useMemo(() => createGarageFloorTexture(), []);
 
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.004, 0]} receiveShadow>
-        <planeGeometry args={[FLOOR, FLOOR]} />
-        <meshStandardMaterial
-          map={map ?? undefined}
-          color="#ffffff"
-          roughness={0.62}
-          metalness={0.06}
-        />
-      </mesh>
-      <mesh position={[0, 2.6, -9]} receiveShadow>
-        <planeGeometry args={[24, 5.6]} />
-        <meshStandardMaterial color="#3c3a38" roughness={0.92} />
-      </mesh>
-      <mesh position={[-10, 2.6, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[20, 5.6]} />
-        <meshStandardMaterial color="#343230" roughness={0.92} />
-      </mesh>
-      <mesh position={[10, 2.6, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[20, 5.6]} />
-        <meshStandardMaterial color="#343230" roughness={0.92} />
-      </mesh>
-    </group>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.004, 0]} receiveShadow>
+      <circleGeometry args={[FLOOR / 2, 36]} />
+      <meshStandardMaterial
+        map={map ?? undefined}
+        color="#ffffff"
+        roughness={0.62}
+        metalness={0.06}
+      />
+    </mesh>
   );
 }

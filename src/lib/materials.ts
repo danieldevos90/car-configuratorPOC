@@ -1,4 +1,11 @@
-import { Color, Mesh, Object3D, type Material, type MeshPhysicalMaterial } from "three";
+import {
+  Color,
+  Mesh,
+  Object3D,
+  Texture,
+  type Material,
+  type MeshPhysicalMaterial,
+} from "three";
 import type { VehicleDefinition } from "@/config/catalog";
 import type { Finish } from "@/config/finishes";
 
@@ -116,6 +123,26 @@ export function applyConfiguratorMaterials(
     }
     mat.needsUpdate = true;
   }
+}
+
+/** Sharper oblique surfaces; call once after the GLB is loaded. */
+export function tuneVehicleTextureSampling(root: Object3D, maxAnisotropy: number) {
+  const anisotropy = Math.min(16, Math.max(1, maxAnisotropy));
+  root.traverse((child) => {
+    if (!(child instanceof Mesh)) return;
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (value instanceof Texture) {
+          value.anisotropy = anisotropy;
+          value.needsUpdate = true;
+        }
+      }
+    }
+  });
 }
 
 export function setNamedVisibility(

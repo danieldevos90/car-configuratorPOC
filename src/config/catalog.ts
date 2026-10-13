@@ -62,6 +62,9 @@ export type VehicleDefinition = {
 
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
+/** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
+export const WEB_MODEL_REV = "?v=2";
+
 export const vehicles: Record<VehicleId, VehicleDefinition> = {
   retro: {
     id: "retro",
@@ -69,7 +72,7 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
     subtitle: "G550 restomod · WIP scene",
     year: "2026",
     sourceUrl: `${MODELS_BASE}/source/WIP-gelande-werke-RETRO.glb`,
-    webUrl: `${MODELS_BASE}/web/WIP-gelande-werke-RETRO.glb`,
+    webUrl: `${MODELS_BASE}/web/WIP-gelande-werke-RETRO.glb${WEB_MODEL_REV}`,
     paintMaterials: ["CarPaint", "CarPaint White"],
     accentPaintMaterials: ["CarPaint (1)"],
     leatherMaterials: [
@@ -221,7 +224,7 @@ export const vehicles: Record<VehicleId, VehicleDefinition> = {
     subtitle: "Original donor model",
     year: "OEM",
     sourceUrl: `${MODELS_BASE}/source/MB-G550-original-model.glb`,
-    webUrl: `${MODELS_BASE}/web/MB-G550-original-model.glb`,
+    webUrl: `${MODELS_BASE}/web/MB-G550-original-model.glb${WEB_MODEL_REV}`,
     paintMaterials: ["CarPaint-retro-G"],
     accentPaintMaterials: [],
     leatherMaterials: [],
