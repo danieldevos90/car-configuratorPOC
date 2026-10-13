@@ -10,7 +10,8 @@
     "audit:glb": "node scripts/audit-glb.mjs",
     "compact:glb": "node scripts/compact-source-glb.mjs",
     "optimize:glb": "node scripts/optimize-glb.mjs",
-    "build:master-glb": "bash scripts/run-build-master-vehicle.sh"
+    "build:master-glb": "bash scripts/run-build-master-vehicle.sh",
+    "build:modular-glb": "bash scripts/run-build-modular-vehicle.sh"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.6",

@@ -20,6 +20,30 @@ async function resolveModelUrl(webUrl: string, sourceUrl: string) {
   return { url: sourceUrl, optimized: false };
 }
 
+type ResolvedModels = {
+  baseUrl: string;
+  kitUrl: string | null;
+  optimized: boolean;
+};
+
+async function resolveVehicleModels(
+  vehicle: (typeof vehicles)[keyof typeof vehicles],
+): Promise<ResolvedModels> {
+  const base = await resolveModelUrl(vehicle.webUrl, vehicle.sourceUrl);
+  if (!vehicle.modular) {
+    return { baseUrl: base.url, kitUrl: null, optimized: base.optimized };
+  }
+  const kit = await resolveModelUrl(
+    vehicle.modular.kitWebUrl,
+    vehicle.modular.kitSourceUrl,
+  );
+  return {
+    baseUrl: base.url,
+    kitUrl: kit.url,
+    optimized: base.optimized && kit.optimized,
+  };
+}
+
 type ConfiguratorCanvasProps = {
   onReady?: () => void;
 };
@@ -29,9 +53,7 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
   const studioId = useConfigurator((s) => s.studioId);
   const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const vehicle = vehicles[vehicleId];
-  const [resolved, setResolved] = useState<{ url: string; optimized: boolean } | null>(
-    null,
-  );
+  const [resolved, setResolved] = useState<ResolvedModels | null>(null);
   const [vehicleReady, setVehicleReady] = useState(false);
   const dpr = useSceneDpr();
 
@@ -39,17 +61,21 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
     let cancelled = false;
     setResolved(null);
     setVehicleReady(false);
-    void resolveModelUrl(vehicle.webUrl, vehicle.sourceUrl).then((result) => {
+    void resolveVehicleModels(vehicle).then((result) => {
       if (!cancelled) setResolved(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [vehicle.webUrl, vehicle.sourceUrl]);
+  }, [vehicle]);
 
   useEffect(() => {
     if (vehicleReady) onReady?.();
   }, [vehicleReady, onReady]);
+
+  const modelKey = resolved
+    ? `${resolved.baseUrl}|${resolved.kitUrl ?? ""}`
+    : "";
 
   return (
     <Canvas
@@ -69,9 +95,10 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
       {resolved ? (
         <Suspense fallback={null}>
           <Vehicle
-            key={resolved.url}
+            key={modelKey}
             vehicle={vehicle}
-            url={resolved.url}
+            url={resolved.baseUrl}
+            kitUrl={resolved.kitUrl}
             onReady={() => setVehicleReady(true)}
           />
         </Suspense>

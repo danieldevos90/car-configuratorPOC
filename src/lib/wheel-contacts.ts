@@ -43,9 +43,21 @@ function clusterMeshContacts(node: Object3D): Vector3[] {
   return contacts;
 }
 
+function partRoot(
+  base: Object3D,
+  kit: Object3D | null,
+  part: { module?: string; presetRoot?: string },
+): Object3D | null {
+  const scene = part.module === "gelande" ? kit : base;
+  if (!scene) return null;
+  if (part.presetRoot) return scene.getObjectByName(part.presetRoot) ?? null;
+  return scene;
+}
+
 /** Ground contact points (world space) for each visible wheel group. */
 export function collectWheelContacts(
-  root: Object3D,
+  base: Object3D,
+  kit: Object3D | null,
   vehicle: VehicleDefinition,
   hiddenPartIds: readonly string[],
 ): Vector3[] {
@@ -54,9 +66,7 @@ export function collectWheelContacts(
 
   for (const part of vehicle.parts) {
     if (part.category !== "wheels" || hidden.has(part.id)) continue;
-    const scope = part.presetRoot
-      ? root.getObjectByName(part.presetRoot)
-      : root;
+    const scope = partRoot(base, kit, part);
     if (!scope || !scope.visible) continue;
     for (const name of part.nodeNames) {
       const node = scope.getObjectByName(name);

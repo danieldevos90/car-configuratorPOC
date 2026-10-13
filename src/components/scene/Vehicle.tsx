@@ -7,8 +7,8 @@ useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
 );
 import { ThreeEvent, useThree } from "@react-three/fiber";
-import { Box3, Group, Object3D, Vector3 } from "three";
-import type { VehicleDefinition } from "@/config/catalog";
+import { Box3, Group, Object3D, Vector3, type WebGLRenderer } from "three";
+import type { ConfigPart, VehicleDefinition } from "@/config/catalog";
 import { calipers, interiors, paints } from "@/config/finishes";
 import {
   applyConfiguratorMaterials,
@@ -25,11 +25,108 @@ import { WheelContactShadows } from "./WheelContactShadows";
 type VehicleProps = {
   vehicle: VehicleDefinition;
   url: string;
+  kitUrl?: string | null;
   onReady?: () => void;
 };
 
-export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
+function sceneForPart(
+  part: ConfigPart,
+  baseScene: Object3D,
+  kitScene: Object3D | null,
+): Object3D | null {
+  if (part.module === "gelande") {
+    return kitScene;
+  }
+  return baseScene;
+}
+
+function prepareScene(
+  scene: Object3D,
+  vehicle: VehicleDefinition,
+  gl: WebGLRenderer,
+  isCompactDevice: boolean,
+  highDetail: boolean,
+  textureMaxSize: number,
+) {
+  scene.traverse((child) => {
+    child.castShadow = false;
+    child.receiveShadow = false;
+  });
+  sanitizeVehicleMaterials(scene, vehicle);
+  const maxAniso = gl.capabilities.getMaxAnisotropy();
+  const anisotropy =
+    !isCompactDevice || highDetail ? maxAniso : Math.min(8, maxAniso);
+  tuneVehicleTextureSampling(scene, anisotropy, textureMaxSize);
+}
+
+export function Vehicle({ vehicle, url, kitUrl, onReady }: VehicleProps) {
+  if (kitUrl) {
+    return (
+      <ModularVehicle
+        vehicle={vehicle}
+        baseUrl={url}
+        kitUrl={kitUrl}
+        onReady={onReady}
+      />
+    );
+  }
+  return <SingleVehicle vehicle={vehicle} url={url} onReady={onReady} />;
+}
+
+function SingleVehicle({
+  vehicle,
+  url,
+  onReady,
+}: {
+  vehicle: VehicleDefinition;
+  url: string;
+  onReady?: () => void;
+}) {
   const { scene } = useGLTF(url);
+  return (
+    <VehicleScene
+      vehicle={vehicle}
+      baseScene={scene}
+      kitScene={null}
+      onReady={onReady}
+    />
+  );
+}
+
+function ModularVehicle({
+  vehicle,
+  baseUrl,
+  kitUrl,
+  onReady,
+}: {
+  vehicle: VehicleDefinition;
+  baseUrl: string;
+  kitUrl: string;
+  onReady?: () => void;
+}) {
+  const { scene: baseScene } = useGLTF(baseUrl);
+  const { scene: kitScene } = useGLTF(kitUrl);
+  return (
+    <VehicleScene
+      vehicle={vehicle}
+      baseScene={baseScene}
+      kitScene={kitScene}
+      onReady={onReady}
+    />
+  );
+}
+
+function VehicleScene({
+  vehicle,
+  baseScene,
+  kitScene,
+  onReady,
+}: {
+  vehicle: VehicleDefinition;
+  baseScene: Object3D;
+  kitScene: Object3D | null;
+  onReady?: () => void;
+}) {
   const gl = useThree((s) => s.gl);
   const group = useRef<Group>(null);
   const namedRef = useRef<Map<string, Object3D>>(new Map());
@@ -48,17 +145,46 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
   const [wheelContacts, setWheelContacts] = useState<Vector3[]>([]);
 
   useLayoutEffect(() => {
-    scene.traverse((child) => {
-      child.castShadow = false;
-      child.receiveShadow = false;
-    });
-    sanitizeVehicleMaterials(scene, vehicle);
-    const maxAniso = gl.capabilities.getMaxAnisotropy();
-    const anisotropy =
-      !isCompactDevice || highDetail ? maxAniso : Math.min(8, maxAniso);
-    tuneVehicleTextureSampling(scene, anisotropy, textureMaxSize);
-    namedRef.current = collectNamedNodes(scene);
-  }, [scene, vehicle, gl, isCompactDevice, highDetail, textureMaxSize]);
+    prepareScene(
+      baseScene,
+      vehicle,
+      gl,
+      isCompactDevice,
+      highDetail,
+      textureMaxSize,
+    );
+    if (kitScene) {
+      prepareScene(
+        kitScene,
+        vehicle,
+        gl,
+        isCompactDevice,
+        highDetail,
+        textureMaxSize,
+      );
+    }
+    const named = collectNamedNodes(baseScene);
+    if (kitScene) {
+      for (const [key, value] of collectNamedNodes(kitScene)) {
+        named.set(key, value);
+      }
+    }
+    namedRef.current = named;
+  }, [
+    baseScene,
+    kitScene,
+    vehicle,
+    gl,
+    isCompactDevice,
+    highDetail,
+    textureMaxSize,
+  ]);
+
+  const updateContacts = () => {
+    setWheelContacts(
+      collectWheelContacts(baseScene, kitScene, vehicle, hiddenPartIds),
+    );
+  };
 
   useLayoutEffect(() => {
     const root = group.current;
@@ -71,29 +197,28 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
     const sized = box.getSize(new Vector3());
     const radius = 0.5 * Math.hypot(sized.x, sized.y, sized.z);
     if (radius > 0.2) setVehicleRadius(radius);
-    setWheelContacts(collectWheelContacts(scene, vehicle, hiddenPartIds));
+    updateContacts();
     onReady?.();
-  }, [scene, vehicle, hiddenPartIds, setVehicleRadius, onReady]);
+  }, [baseScene, kitScene, vehicle, hiddenPartIds, setVehicleRadius, onReady]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];
     const interior = interiors.find((p) => p.id === interiorId) ?? interiors[0];
     const caliper = calipers.find((p) => p.id === caliperId) ?? calipers[0];
-    applyConfiguratorMaterials(scene, vehicle, {
-      paint,
-      interior,
-      caliper,
-      lightsOn,
-    });
-  }, [scene, vehicle, paintId, interiorId, caliperId, lightsOn]);
+    const options = { paint, interior, caliper, lightsOn };
+    applyConfiguratorMaterials(baseScene, vehicle, options);
+    if (kitScene) applyConfiguratorMaterials(kitScene, vehicle, options);
+  }, [baseScene, kitScene, vehicle, paintId, interiorId, caliperId, lightsOn]);
 
   useEffect(() => {
     const hidden = new Set(hiddenPartIds);
     for (const part of vehicle.parts) {
-      setPartVisibility(scene, part, !hidden.has(part.id));
+      const root = sceneForPart(part, baseScene, kitScene);
+      if (!root) continue;
+      setPartVisibility(root, part, !hidden.has(part.id));
     }
-    setWheelContacts(collectWheelContacts(scene, vehicle, hiddenPartIds));
-  }, [hiddenPartIds, vehicle, scene]);
+    updateContacts();
+  }, [hiddenPartIds, vehicle, baseScene, kitScene]);
 
   const selectableNames = useMemo(() => {
     const names = new Set<string>();
@@ -132,7 +257,8 @@ export function Vehicle({ vehicle, url, onReady }: VehicleProps) {
         rotation={[-Math.PI / 2, 0, 0]}
         onPointerDown={onPointerDown}
       >
-        <primitive object={scene} />
+        <primitive object={baseScene} />
+        {kitScene ? <primitive object={kitScene} /> : null}
       </group>
       <WheelContactShadows
         contacts={wheelContacts}

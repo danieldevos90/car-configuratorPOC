@@ -1,3 +1,5 @@
+import { GELANDE_KIT_PARTS } from "@/config/gelande-kit-parts";
+
 /**
  * Vehicle catalog — the contract between source GLBs and the configurator.
  *
@@ -14,7 +16,7 @@
  * groups toggle visibility inside that asset — see build-presets.ts.
  */
 
-export type VehicleId = "g550" | "retro" | "master";
+export type VehicleId = "g550" | "retro" | "master" | "configured";
 
 export type PartCategory =
   | "body"
@@ -33,6 +35,13 @@ export type ConfigPart = {
   description?: string;
   /** Limit node lookup to this root empty (combined master GLB). */
   presetRoot?: string;
+  /** Loaded from the Gelände kit GLB module (not the OEM base). */
+  module?: "gelande";
+};
+
+export type VehicleModular = {
+  kitSourceUrl: string;
+  kitWebUrl: string;
 };
 
 /** Only one part in the group can be visible at a time (e.g. wheel sets). */
@@ -70,13 +79,14 @@ export type VehicleDefinition = {
   emissiveMaterials: string[];
   parts: ConfigPart[];
   exclusiveGroups?: ExclusivePartGroup[];
+  modular?: VehicleModular;
   audit: VehicleAudit;
 };
 
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
 /** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
-export const WEB_MODEL_REV = "?v=4";
+export const WEB_MODEL_REV = "?v=5";
 
 const MASTER_OEM_ROOT = "Build_OEM";
 const MASTER_RETRO_ROOT = "Build_Retro";
@@ -447,10 +457,57 @@ const masterVehicle: VehicleDefinition = {
   },
 };
 
+const configuredVehicle: VehicleDefinition = {
+  id: "configured",
+  name: "Mercedes-Benz G550",
+  subtitle: "OEM base · Gelände Werke options",
+  year: "2026",
+  sourceUrl: g550Vehicle.sourceUrl,
+  webUrl: g550Vehicle.webUrl,
+  modular: {
+    kitSourceUrl: `${MODELS_BASE}/source/GW-gelande-kits.glb`,
+    kitWebUrl: `${MODELS_BASE}/web/GW-gelande-kits.glb${WEB_MODEL_REV}`,
+  },
+  paintMaterials: [
+    ...g550Vehicle.paintMaterials,
+    ...retroVehicle.paintMaterials,
+    ...retroVehicle.accentPaintMaterials,
+  ],
+  accentPaintMaterials: retroVehicle.accentPaintMaterials,
+  leatherMaterials: retroVehicle.leatherMaterials,
+  caliperMaterials: retroVehicle.caliperMaterials,
+  glassMaterials: retroVehicle.glassMaterials,
+  emissiveMaterials: retroVehicle.emissiveMaterials,
+  exclusiveGroups: [
+    {
+      id: "wheels",
+      label: "Wheels",
+      partIds: ["wheels", "gelande-wheels"],
+    },
+  ],
+  parts: [...g550Vehicle.parts, ...GELANDE_KIT_PARTS],
+  audit: {
+    fileName: "GW-G550-base + GW-gelande-kits",
+    sizeMb: g550Vehicle.audit.sizeMb,
+    triangles: g550Vehicle.audit.triangles,
+    vertices: g550Vehicle.audit.vertices,
+    nodes: g550Vehicle.audit.nodes,
+    meshes: g550Vehicle.audit.meshes,
+    materials: g550Vehicle.audit.materials,
+    textures: retroVehicle.audit.textures,
+    textureMb: retroVehicle.audit.textureMb,
+    issues: [
+      "OEM G550 is the only full vehicle mesh; Gelände parts load from a separate kit GLB.",
+      "Run npm run build:modular-glb after WIP or kit changes.",
+    ],
+  },
+};
+
 export const vehicles: Record<VehicleId, VehicleDefinition> = {
   retro: retroVehicle,
   g550: g550Vehicle,
   master: masterVehicle,
+  configured: configuredVehicle,
 };
 
 export const vehicleList = Object.values(vehicles);

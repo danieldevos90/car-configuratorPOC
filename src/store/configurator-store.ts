@@ -98,19 +98,24 @@ type ConfiguratorState = {
 function applyBuildPreset(id: BuildPresetId) {
   const preset = buildPresets[id];
   const vehicle = vehicles[preset.vehicleId];
+  const hidden = new Set([
+    ...defaultHiddenPartIds(vehicle),
+    ...preset.hiddenPartIds,
+  ]);
+  for (const partId of preset.forceVisiblePartIds ?? []) {
+    hidden.delete(partId);
+  }
   return {
     buildPresetId: id,
     vehicleId: preset.vehicleId,
-    hiddenPartIds: [
-      ...new Set([...defaultHiddenPartIds(vehicle), ...preset.hiddenPartIds]),
-    ],
+    hiddenPartIds: [...hidden],
     selectedPartId: null,
   };
 }
 
 export const useConfigurator = create<ConfiguratorState>((set, get) => ({
-  buildPresetId: "retro",
-  vehicleId: "retro",
+  buildPresetId: "oem",
+  vehicleId: "configured",
   paintId: "gmanufaktur",
   interiorId: "saddle",
   caliperId: "gunmetal",

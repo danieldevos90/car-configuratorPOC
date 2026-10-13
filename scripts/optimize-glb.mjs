@@ -35,6 +35,7 @@ const jobs = [
   "MB-G550-original-model.glb",
   "WIP-gelande-werke-RETRO.glb",
   "GW-G550-configurator-master.glb",
+  "GW-gelande-kits.glb",
 ];
 
 for (const file of jobs) {
