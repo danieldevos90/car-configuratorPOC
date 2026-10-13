@@ -2,20 +2,17 @@
 
 import { Suspense, useMemo } from "react";
 import { Cloud, Clouds, Environment } from "@react-three/drei";
-import { CanvasTexture, MeshLambertMaterial } from "three";
+import { BackSide, CanvasTexture, MeshLambertMaterial } from "three";
 import type { StudioId } from "@/config/finishes";
 import { useConfigurator } from "@/store/configurator-store";
 import { ForestPine } from "./ForestPine";
 import { FOREST_SKY_URL } from "./outdoor-stage";
-import { GarageFloor } from "./GarageFloor";
 
-const ENV: Record<StudioId, "studio" | "apartment" | "night" | "warehouse" | "forest"> = {
-  studio: "studio",
-  showroom: "apartment",
-  night: "night",
-  garage: "warehouse",
-  road: "forest",
-};
+const DAYLIGHT = {
+  sky: "#e6eaef",
+  floor: "#d5dae1",
+  cove: "#f3f5f7",
+} as const;
 
 const SKY_HAZE = "#9ec8ea";
 const SKY_URL = FOREST_SKY_URL;
@@ -109,101 +106,84 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
   );
 }
 
+/** Soft north-light cove: daylight fill, studio HDR on the paint. */
+function DaylightStudio() {
+  return (
+    <>
+      <color attach="background" args={[DAYLIGHT.sky]} />
+      <fog attach="fog" args={[DAYLIGHT.sky, 18, 56]} />
+      <hemisphereLight args={["#f7fbff", "#c5ccd4", 1.05]} />
+      <spotLight
+        position={[5.5, 9.5, 5]}
+        angle={0.55}
+        penumbra={1}
+        intensity={48}
+        color="#fff8f2"
+      />
+      <spotLight
+        position={[-6, 7.5, -2]}
+        angle={0.7}
+        penumbra={1}
+        intensity={22}
+        color="#e7f0ff"
+      />
+      <spotLight
+        position={[0, 11, 1.2]}
+        angle={0.75}
+        penumbra={1}
+        intensity={36}
+        color="#ffffff"
+      />
+      <Suspense fallback={null}>
+        <Environment preset="studio" environmentIntensity={0.78} />
+      </Suspense>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
+        <circleGeometry args={[18, 64]} />
+        <meshStandardMaterial color={DAYLIGHT.floor} roughness={0.72} metalness={0.02} />
+      </mesh>
+      <mesh position={[0, 5.2, 0]}>
+        <cylinderGeometry args={[16, 16, 14, 48, 1, true, Math.PI, Math.PI]} />
+        <meshStandardMaterial color={DAYLIGHT.cove} roughness={0.94} side={BackSide} />
+      </mesh>
+      <FootprintShadow y={0.018} opacity={0.36} />
+    </>
+  );
+}
+
 export function Studio({ studioId }: { studioId: StudioId }) {
   const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
   const highDetail = useConfigurator((s) => s.highDetail);
-  const showroom = studioId === "showroom";
-  const night = studioId === "night";
-  const garage = studioId === "garage";
-  const road = studioId === "road";
-  const bg = showroom ? "#f4f4f4" : road ? SKY_HAZE : garage ? "#1a1918" : "#000000";
-  const floor = showroom ? "#ffffff" : night ? "#0a0a0a" : "#161616";
+  const outdoor = studioId === "road";
   const liteSky = sceneNavigating || !highDetail;
+
+  if (!outdoor) return <DaylightStudio />;
 
   return (
     <>
-      {road ? (
-        <Suspense fallback={<color attach="background" args={[SKY_HAZE]} />}>
-          <OutdoorSky lite={liteSky} />
-          <SkyClouds lite={liteSky} />
-        </Suspense>
-      ) : (
-        <color attach="background" args={[bg]} />
-      )}
-      <fog
-        attach="fog"
-        args={[
-          road ? SKY_HAZE : bg,
-          road ? 38 : garage ? 22 : showroom ? 16 : 12,
-          road ? 105 : garage ? 64 : showroom ? 48 : 42,
-        ]}
-      />
-      <hemisphereLight
-        args={
-          showroom
-            ? ["#ffffff", "#cfcfcf", 1.15]
-            : road
-              ? ["#d4e8f8", "#6a5344", 0.75]
-            : garage
-              ? ["#f3f1ec", "#2a2826", 0.55]
-              : ["#ffffff", "#111111", night ? 0.22 : 0.4]
-        }
-      />
+      <Suspense fallback={<color attach="background" args={[SKY_HAZE]} />}>
+        <OutdoorSky lite={liteSky} />
+        <SkyClouds lite={liteSky} />
+      </Suspense>
+      <fog attach="fog" args={[SKY_HAZE, 38, 105]} />
+      <hemisphereLight args={["#d4e8f8", "#6a5344", 0.75]} />
       <spotLight
         position={[6, 10, 4]}
         angle={0.5}
         penumbra={0.85}
-        intensity={showroom ? 90 : road ? 14 : garage ? 48 : night ? 28 : 70}
-        color={road ? "#f4f7f2" : garage ? "#f4efe6" : "#ffffff"}
+        intensity={14}
+        color="#f4f7f2"
       />
       <spotLight
         position={[-7, 8, -3]}
         angle={0.55}
         penumbra={1}
-        intensity={showroom ? 40 : road ? 8 : garage ? 22 : night ? 8 : 18}
-        color={road ? "#f4f7f2" : garage ? "#f4efe6" : "#ffffff"}
+        intensity={8}
+        color="#f4f7f2"
       />
-      {(showroom || garage) && (
-        <spotLight
-          position={[0, garage ? 9 : 12, garage ? 1.5 : 0]}
-          angle={garage ? 0.85 : 0.7}
-          penumbra={1}
-          intensity={garage ? 36 : 55}
-          color={garage ? "#f7f4ee" : "#ffffff"}
-        />
-      )}
-      {!road ? (
-        <Environment
-          preset={ENV[studioId]}
-          environmentIntensity={
-            showroom ? 0.85 : garage ? 0.42 : night ? 0.2 : 0.55
-          }
-        />
-      ) : null}
-      {road ? (
-        <Suspense fallback={null}>
-          <ForestPine />
-        </Suspense>
-      ) : garage ? (
-        <Suspense fallback={null}>
-          <GarageFloor />
-        </Suspense>
-      ) : (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
-          <circleGeometry args={[22, 64]} />
-          <meshStandardMaterial color={floor} roughness={showroom ? 0.78 : 0.95} />
-        </mesh>
-      )}
-      {showroom && (
-        <mesh position={[0, 6, -14]}>
-          <planeGeometry args={[48, 24]} />
-          <meshStandardMaterial color="#ffffff" roughness={1} />
-        </mesh>
-      )}
-      <FootprintShadow
-        y={road ? 0.055 : 0.018}
-        opacity={showroom ? 0.42 : road ? 0.88 : garage ? 0.62 : night ? 0.72 : 0.52}
-      />
+      <Suspense fallback={null}>
+        <ForestPine />
+      </Suspense>
+      <FootprintShadow y={0.055} opacity={0.88} />
     </>
   );
 }

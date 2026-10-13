@@ -61,7 +61,7 @@ type ConfiguratorState = {
   sceneLoading: boolean;
   /** True while the user drags / zooms the 3D camera (lighter scene + lower DPR). */
   sceneNavigating: boolean;
-  /** Phone / tablet viewport — start in studio, keep the GPU budget low. */
+  /** Phone / tablet viewport — keep the GPU budget low. */
   isCompactDevice: boolean;
   /** Wi‑Fi (or desktop without Save-Data): grass, clouds, fuller texture sampling. */
   highDetail: boolean;
@@ -91,7 +91,7 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   paintId: "gmanufaktur",
   interiorId: "saddle",
   caliperId: "gunmetal",
-  studioId: "studio",
+  studioId: "daylight",
   cameraId: "hero",
   exteriorCameraId: "hero",
   configSection: "paint",
@@ -250,7 +250,7 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   bootstrapScene: () => {
     const isCompactDevice = isCompactViewport();
     const highDetail = shouldLoadHighDetail(isCompactDevice);
-    const studioId: StudioId = isCompactDevice ? "studio" : "road";
+    const studioId: StudioId = "daylight";
     const cameraId = defaultExteriorCamera(studioId);
     set({
       studioId,

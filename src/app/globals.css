@@ -110,25 +110,14 @@ button:focus-visible {
   }
 }
 
-.app-shell[data-studio="showroom"],
-.app-shell[data-studio="showroom"] .scene-canvas,
-.app-shell[data-studio="showroom"] .scene-fallback {
-  background: #f4f4f4;
+.app-shell[data-studio="daylight"],
+.app-shell[data-studio="daylight"] .scene-canvas,
+.app-shell[data-studio="daylight"] .scene-fallback {
+  background: #e6eaef;
 }
 
-.app-shell[data-studio="studio"],
-.app-shell[data-studio="night"],
-.app-shell[data-studio="studio"] .scene-canvas,
-.app-shell[data-studio="night"] .scene-canvas,
-.app-shell[data-studio="studio"] .scene-fallback,
-.app-shell[data-studio="night"] .scene-fallback {
-  background: #000000;
-}
-
-.app-shell[data-studio="garage"],
-.app-shell[data-studio="garage"] .scene-canvas,
-.app-shell[data-studio="garage"] .scene-fallback {
-  background: #1a1918;
+.app-shell[data-studio="daylight"] .loading-screen-line {
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .app-shell[data-studio="road"],

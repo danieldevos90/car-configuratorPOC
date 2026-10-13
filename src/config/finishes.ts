@@ -168,10 +168,7 @@ export const calipers: Finish[] = [
 
 export const studioPresets = [
   { id: "road", label: "Outdoor" },
-  { id: "showroom", label: "Atelier" },
-  { id: "studio", label: "Studio" },
-  { id: "garage", label: "Garage" },
-  { id: "night", label: "Night" },
+  { id: "daylight", label: "Daylight studio" },
 ] as const;
 
 export type StudioId = (typeof studioPresets)[number]["id"];
