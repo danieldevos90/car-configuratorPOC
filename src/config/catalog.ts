@@ -16,7 +16,7 @@ import { GELANDE_KIT_PARTS } from "@/config/gelande-kit-parts";
  * groups toggle visibility (e.g. wheel sets).
  */
 
-export type VehicleId = "g550" | "retro" | "master" | "configured";
+export type VehicleId = "g550" | "retro" | "master" | "configured" | "gw";
 
 export type PartCategory =
   | "body"
@@ -37,7 +37,34 @@ export type ConfigPart = {
   presetRoot?: string;
   /** Loaded from the Gelände kit GLB module (not the OEM base). */
   module?: "gelande";
+  /** Customer-facing add-on (on/off switch) rather than an inspector toggle. */
+  accessory?: boolean;
+  /** Camera angle used when the configurator flies to this part. */
+  view?: PartView;
+  /** Short option name inside a slot ("RETRO", "Gloss black"). */
+  optionLabel?: string;
+  /** UI swatch for the option card. */
+  swatch?: string;
+  /** Material variant applied while this option is visible (options may share geometry). */
+  finish?: PartFinish;
 };
+
+export type FinishTone = {
+  color: string;
+  metalness: number;
+  roughness: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+};
+
+export type PartFinish = {
+  /** Exact material names inside the part's nodes that receive the variant. */
+  materials: string[];
+  tone: "paint" | "contrast" | FinishTone;
+};
+
+/** Orbit angles (radians) around the car: azimuth 0 = front (+Z), polar 0 = top. */
+export type PartView = { azimuth: number; polar: number; camera?: "wheels" };
 
 export type VehicleModular = {
   kitSourceUrl: string;
@@ -48,6 +75,16 @@ export type VehicleModular = {
 export type ExclusivePartGroup = {
   id: string;
   label: string;
+  partIds: string[];
+  /** A slot that always shows exactly one option (OEM ↔ RETRO swap). */
+  required?: boolean;
+};
+
+/** One-click build: picks these options in every required slot. */
+export type VehicleBuild = {
+  id: string;
+  label: string;
+  description: string;
   partIds: string[];
 };
 
@@ -73,12 +110,15 @@ export type VehicleDefinition = {
   webUrl: string;
   paintMaterials: string[];
   accentPaintMaterials: string[];
+  /** Second colour (duo-tone roof, storage boxes) chosen separately from the body. */
+  contrastPaintMaterials?: string[];
   leatherMaterials: string[];
   caliperMaterials: string[];
   glassMaterials: string[];
   emissiveMaterials: string[];
   parts: ConfigPart[];
   exclusiveGroups?: ExclusivePartGroup[];
+  builds?: VehicleBuild[];
   modular?: VehicleModular;
   audit: VehicleAudit;
 };
@@ -86,7 +126,7 @@ export type VehicleDefinition = {
 const MODELS_BASE = process.env.NEXT_PUBLIC_MODELS_BASE ?? "/models";
 
 /** Bump when web GLBs are re-exported (`npm run optimize:glb`). */
-export const WEB_MODEL_REV = "?v=9";
+export const WEB_MODEL_REV = "?v=12";
 
 const MASTER_OEM_ROOT = "Build_OEM";
 const MASTER_RETRO_ROOT = "Build_Retro";
@@ -503,11 +543,287 @@ const configuredVehicle: VehicleDefinition = {
   },
 };
 
+/** OEM ↔ RETRO slots in GW-configurator.glb (names from scripts/optimize-gw-configurator.mjs). */
+const VIEW = {
+  front: { azimuth: 0.55, polar: 1.32 },
+  frontLow: { azimuth: 0.35, polar: 1.48 },
+  frontFender: { azimuth: 0.95, polar: 1.3 },
+  side: { azimuth: Math.PI / 2, polar: 1.38 },
+  rear: { azimuth: Math.PI - 0.6, polar: 1.3 },
+  roof: { azimuth: 0.75, polar: 0.9 },
+  wheels: { azimuth: 0.9, polar: 1.42, camera: "wheels" },
+} satisfies Record<string, PartView>;
+
+/** One choice inside a slot; part id becomes `${key}-${slot.id}`. */
+type SlotOption = {
+  key: string;
+  label: string;
+  nodes: string[];
+  description?: string;
+  swatch?: string;
+  finish?: PartFinish;
+};
+
+type SlotDef = {
+  id: string;
+  label: string;
+  category: PartCategory;
+  view: PartView;
+  defaultKey: string;
+  options: SlotOption[];
+};
+
+const TONE = {
+  glossBlack: { color: "#0d0e10", metalness: 0.35, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 },
+  satinBlack: { color: "#1a1b1d", metalness: 0.4, roughness: 0.48, clearcoat: 0.3, clearcoatRoughness: 0.4 },
+  bronze: { color: "#6e5536", metalness: 0.85, roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.12 },
+} satisfies Record<string, FinishTone>;
+
+const RETRO_RIM = ["WheelChrome [imported] (1)"];
+const OEM_RIM = ["WheelRimAlumGlossy"];
+const RETRO_ACCENT = ["CarPaint (1)"];
+
+function oemRetro(oem: string[], retro: string[]): SlotOption[] {
+  return [
+    { key: "oem", label: "OEM", nodes: oem },
+    { key: "retro", label: "RETRO", nodes: retro },
+  ];
+}
+
+const GW_SLOTS: SlotDef[] = [
+  {
+    id: "front-bumper",
+    label: "Front bumper",
+    category: "kit",
+    view: VIEW.front,
+    defaultKey: "retro",
+    options: [
+      { key: "oem", label: "OEM", nodes: ["Front-bumper"] },
+      { key: "retro", label: "RETRO", description: "Graphite accent", nodes: ["Front-bumper-v9"], swatch: "#3b3b3b" },
+      { key: "retro-paint", label: "RETRO body colour", nodes: ["Front-bumper-v9"], finish: { materials: RETRO_ACCENT, tone: "paint" } },
+    ],
+  },
+  { id: "grille", label: "Grille & front face", category: "kit", view: VIEW.front, defaultKey: "retro", options: oemRetro(["OEM-Front-face", "Front-central-grille"], ["Grill-face", "Grille-new"]) },
+  { id: "bonnet-grill", label: "Bonnet grill", category: "kit", view: VIEW.front, defaultKey: "retro", options: oemRetro(["OEM-bonnet-grill"], ["Bonnet-grill-v2"]) },
+  { id: "headlights", label: "Headlights", category: "lights", view: VIEW.front, defaultKey: "retro", options: oemRetro(["Headlights"], ["Front-headlights-new-position"]) },
+  { id: "front-fenders", label: "Front fenders", category: "kit", view: VIEW.frontFender, defaultKey: "retro", options: oemRetro(["Fenders-front", "fender-liners"], ["Front-fenders-with-hole", "Front-fender-extension"]) },
+  {
+    id: "wheels",
+    label: "Wheels",
+    category: "wheels",
+    view: VIEW.wheels,
+    defaultKey: "retro",
+    options: [
+      { key: "oem", label: "OEM alloy", description: "Polished aluminium", nodes: ["OEM-wheels"], swatch: "#c7c9cc" },
+      { key: "oem-black", label: "OEM black", nodes: ["OEM-wheels"], swatch: TONE.glossBlack.color, finish: { materials: OEM_RIM, tone: TONE.glossBlack } },
+      { key: "retro", label: "RETRO chrome", description: "Steel rim, chrome", nodes: ["Wheel-RETRO-final"], swatch: "#e2e4e7" },
+      { key: "retro-black", label: "RETRO black", nodes: ["Wheel-RETRO-final"], swatch: TONE.satinBlack.color, finish: { materials: RETRO_RIM, tone: TONE.satinBlack } },
+      { key: "retro-bronze", label: "RETRO bronze", nodes: ["Wheel-RETRO-final"], swatch: TONE.bronze.color, finish: { materials: RETRO_RIM, tone: TONE.bronze } },
+      { key: "retro-paint", label: "RETRO colour", description: "Rims in body colour", nodes: ["Wheel-RETRO-final"], finish: { materials: RETRO_RIM, tone: "paint" } },
+    ],
+  },
+  {
+    id: "side-steps",
+    label: "Side steps",
+    category: "kit",
+    view: VIEW.side,
+    defaultKey: "retro",
+    options: [...oemRetro(["Original-side-step"], ["Side-step-v4"]), { key: "none", label: "None", nodes: [] }],
+  },
+  { id: "side-trim", label: "Side trim", category: "kit", view: VIEW.side, defaultKey: "retro", options: oemRetro(["Side-trim"], ["Side-trim-RETRO"]) },
+  { id: "rear-fenders", label: "Rear fenders", category: "kit", view: VIEW.rear, defaultKey: "retro", options: oemRetro(["Fenders-rear"], ["Rear-fenders"]) },
+  {
+    id: "rear-bumper",
+    label: "Rear bumper",
+    category: "kit",
+    view: VIEW.rear,
+    defaultKey: "retro",
+    options: [
+      { key: "oem", label: "OEM", nodes: ["OEM-Rear-bumper"] },
+      { key: "retro", label: "RETRO", description: "Graphite accent", nodes: ["Retro-Rear-bumper"], swatch: "#3b3b3b" },
+      { key: "retro-paint", label: "RETRO body colour", nodes: ["Retro-Rear-bumper"], finish: { materials: RETRO_ACCENT, tone: "paint" } },
+    ],
+  },
+  {
+    id: "spare-wheel",
+    label: "Spare wheel",
+    category: "kit",
+    view: VIEW.rear,
+    defaultKey: "retro",
+    options: [
+      { key: "oem", label: "OEM cover", nodes: ["Trunk-wheel"] },
+      { key: "retro", label: "RETRO compartment", nodes: ["Spare-Wheel-with-compartment"] },
+      { key: "none", label: "None", nodes: [] },
+    ],
+  },
+];
+
+const slotPartId = (slot: SlotDef, key: string) => `${key}-${slot.id}`;
+
+const gwSlotParts: ConfigPart[] = GW_SLOTS.flatMap((slot) =>
+  slot.options.map((option) => ({
+    id: slotPartId(slot, option.key),
+    label: `${slot.label} · ${option.label}`,
+    optionLabel: option.label,
+    description: option.description,
+    swatch: option.swatch,
+    finish: option.finish,
+    nodeNames: option.nodes,
+    category: slot.category,
+    defaultVisible: option.key === slot.defaultKey,
+    view: slot.view,
+  })),
+);
+
+/** Build option for a slot, falling back to the slot default when the build has no such key. */
+function buildPartIds(key: string) {
+  return GW_SLOTS.map((slot) =>
+    slotPartId(slot, slot.options.some((o) => o.key === key) ? key : slot.defaultKey),
+  );
+}
+
+const gwVehicle: VehicleDefinition = {
+  id: "gw",
+  name: "Gelände Werke G550",
+  subtitle: "RETRO kit · OEM parts · duo-tone",
+  year: "2026",
+  sourceUrl: `${MODELS_BASE}/source/gelande-werke-RETRO+OEMparts.glb`,
+  webUrl: `${MODELS_BASE}/web/GW-configurator.glb${WEB_MODEL_REV}`,
+  paintMaterials: ["CarPaint"],
+  accentPaintMaterials: ["CarPaint (1)"],
+  contrastPaintMaterials: ["CarPaint White"],
+  leatherMaterials: retroVehicle.leatherMaterials,
+  caliperMaterials: retroVehicle.caliperMaterials,
+  glassMaterials: retroVehicle.glassMaterials,
+  emissiveMaterials: retroVehicle.emissiveMaterials,
+  exclusiveGroups: GW_SLOTS.map((slot) => ({
+    id: slot.id,
+    label: slot.label,
+    partIds: slot.options.map((option) => slotPartId(slot, option.key)),
+    required: true,
+  })),
+  builds: [
+    {
+      id: "retro",
+      label: "RETRO",
+      description: "Full Gelände Werke RETRO exterior",
+      partIds: buildPartIds("retro"),
+    },
+    {
+      id: "retro-paint",
+      label: "Colour-coded",
+      description: "RETRO kit with bumpers and rims in body colour",
+      partIds: buildPartIds("retro-paint"),
+    },
+    {
+      id: "oem",
+      label: "OEM",
+      description: "Original Mercedes-Benz G550 parts",
+      partIds: buildPartIds("oem"),
+    },
+  ],
+  parts: [
+    {
+      id: "body",
+      label: "Body",
+      nodeNames: ["Body", "Undercarriage", "Rain-rails-trim"],
+      category: "body",
+      defaultVisible: true,
+    },
+    {
+      id: "doors",
+      label: "Doors",
+      nodeNames: ["DoorFrLeft", "DoorFrRight", "DoorRearLeft", "DoorRearRight"],
+      category: "body",
+      defaultVisible: true,
+    },
+    { id: "bonnet", label: "Bonnet", nodeNames: ["Bonnet"], category: "body", defaultVisible: true },
+    { id: "trunk", label: "Trunk", nodeNames: ["Trunk"], category: "body", defaultVisible: true },
+    {
+      id: "duo-tone",
+      label: "Duo-tone roof",
+      nodeNames: ["GW-DuoTone"],
+      category: "body",
+      defaultVisible: true,
+      description: "Roof in the contrast colour",
+      accessory: true,
+      view: VIEW.roof,
+    },
+    ...gwSlotParts,
+    { id: "roof-rack", label: "Roof rack", description: "Wood-inlay expedition rack", nodeNames: ["Roof-rack"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.roof },
+    { id: "ladder", label: "Rear ladder", description: "Roof access", nodeNames: ["Ladder"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.rear },
+    { id: "skidplate", label: "Skidplate", description: "Front underbody protection", nodeNames: ["Skidplate"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.frontLow },
+    {
+      id: "window-storage",
+      label: "Window storage boxes",
+      description: "Side-mounted, contrast colour",
+      nodeNames: ["window-storage-L", "window-storage-R"],
+      category: "kit",
+      defaultVisible: true,
+      accessory: true,
+      view: VIEW.side,
+    },
+    {
+      id: "window-delete",
+      label: "Window delete plates",
+      description: "Rear side windows closed",
+      nodeNames: ["Side-window-delete-plate-L", "Side-window-delete-plate-R"],
+      category: "kit",
+      defaultVisible: true,
+      accessory: true,
+      view: VIEW.side,
+    },
+    {
+      id: "taillights",
+      label: "Taillights",
+      nodeNames: ["Taillights"],
+      category: "lights",
+      defaultVisible: true,
+    },
+    {
+      id: "indicators",
+      label: "Front indicators",
+      nodeNames: ["Front-indicators"],
+      category: "lights",
+      defaultVisible: true,
+    },
+    {
+      id: "interior",
+      label: "Interior",
+      nodeNames: ["Interior", "Seats", "Dash", "SteeringWheel"],
+      category: "interior",
+      defaultVisible: true,
+    },
+    { id: "brakes", label: "Brakes", nodeNames: ["Brakes"], category: "mechanical", defaultVisible: true },
+    { id: "engine", label: "Engine", nodeNames: ["Engine"], category: "mechanical", defaultVisible: true },
+  ],
+  audit: {
+    fileName: "gelande-werke-RETRO+OEMparts.glb → GW-configurator.glb",
+    sizeMb: 46.1,
+    triangles: 6_530_000,
+    vertices: 0,
+    nodes: 448,
+    meshes: 353,
+    materials: 79,
+    textures: 41,
+    textureMb: 16.9,
+    issues: [
+      "Source 920 MB / 8.76M triangles / 7,799 primitives → web 46 MB / 6.5M triangles / 353 primitives.",
+      "Primitives joined per named group; matte parts simplified at 0.00005 × mesh radius, paint/glass/chrome kept at full density.",
+      "Textures: 8K maps capped at 4096 WebP; 64 → 41 after dedup.",
+      "Duplicate source names renamed (Rear-bumper → OEM-/Retro-Rear-bumper, Tube, glass, frame, main-cover).",
+      "KHR_materials_transmission on all 98 materials — stripped at runtime for non-glass.",
+      "Re-export: npm run optimize:gw",
+    ],
+  },
+};
+
 export const vehicles: Record<VehicleId, VehicleDefinition> = {
   retro: retroVehicle,
   g550: g550Vehicle,
   master: masterVehicle,
   configured: configuredVehicle,
+  gw: gwVehicle,
 };
 
 export const vehicleList = Object.values(vehicles);

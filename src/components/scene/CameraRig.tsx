@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { CameraControls } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { PerspectiveCamera, Vector3 } from "three";
 import { cameraPresets } from "@/config/finishes";
 import { useConfigurator } from "@/store/configurator-store";
@@ -14,6 +14,8 @@ const INTERIOR_FOV = 62;
 const VERTICAL_FOV = (EXTERIOR_FOV * Math.PI) / 180;
 
 const NAVIGATION_IDLE_MS = 320;
+/** Must match the layouts where globals.css docks the configurator to the right. */
+const SIDE_PANEL_MEDIA = "(min-width: 901px), (orientation: landscape) and (max-height: 520px)";
 
 const direction = new Vector3();
 const look = new Vector3();
@@ -29,6 +31,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
   const vehicleRadius = useConfigurator((s) => s.vehicleRadius);
   const setSceneNavigating = useConfigurator((s) => s.setSceneNavigating);
   const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
+  const panelOpen = useConfigurator((s) => s.panelOpen);
   const camera = useThree((s) => s.camera);
   const setDpr = useThree((s) => s.setDpr);
   const size = useThree((s) => s.size);
@@ -136,6 +139,39 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
     },
     [setSceneNavigating],
   );
+
+  /** Pixels to shift the projection so the car centres in the area the panel leaves free. */
+  const panelShift = useRef({ x: 0, y: 0 });
+  const appliedShift = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  useEffect(() => {
+    const rail = document.getElementById("config-rail");
+    if (!panelOpen || !rail) {
+      panelShift.current = { x: 0, y: 0 };
+      return;
+    }
+    if (window.matchMedia(SIDE_PANEL_MEDIA).matches) {
+      panelShift.current = { x: Math.max(0, size.width - rail.offsetLeft) / 2, y: 0 };
+    } else {
+      const covered = Math.max(0, size.height - rail.offsetTop);
+      panelShift.current = { x: 0, y: Math.min(covered / 2, size.height * 0.24) };
+    }
+  }, [panelOpen, size.width, size.height]);
+
+  useFrame((_, delta) => {
+    if (!(camera instanceof PerspectiveCamera)) return;
+    const target = interior ? { x: 0, y: 0 } : panelShift.current;
+    const applied = appliedShift.current;
+    const ease = 1 - Math.exp(-delta * 7);
+    const x = Math.abs(target.x - applied.x) < 0.5 ? target.x : applied.x + (target.x - applied.x) * ease;
+    const y = Math.abs(target.y - applied.y) < 0.5 ? target.y : applied.y + (target.y - applied.y) * ease;
+    if (x === applied.x && y === applied.y && applied.w === size.width && applied.h === size.height) {
+      return;
+    }
+    appliedShift.current = { x, y, w: size.width, h: size.height };
+    if (x === 0 && y === 0) camera.clearViewOffset();
+    else camera.setViewOffset(size.width, size.height, x, y, size.width, size.height);
+  });
 
   return (
     <>

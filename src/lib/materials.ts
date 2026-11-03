@@ -6,11 +6,14 @@ import {
   type Material,
   type MeshPhysicalMaterial,
 } from "three";
-import type { ConfigPart, VehicleDefinition } from "@/config/catalog";
+import type { ConfigPart, PartFinish, VehicleDefinition } from "@/config/catalog";
 import type { Finish } from "@/config/finishes";
 
 const GLASS_HINT = /glass|lens|wind|tint|transpar/i;
 const CHROME_HINT = /chrome|aluminium|aluminum|alum/i;
+
+/** Variant clones must not prefix-match catalog names ("CarPaint…") in applyConfiguratorMaterials. */
+const VARIANT_PREFIX = "variant:";
 
 function asPhysical(material: Material | Material[]): MeshPhysicalMaterial[] {
   const list = Array.isArray(material) ? material : [material];
@@ -83,6 +86,7 @@ export function applyConfiguratorMaterials(
   vehicle: VehicleDefinition,
   options: {
     paint: Finish;
+    contrast: Finish;
     interior: Finish;
     caliper: Finish;
     lightsOn: boolean;
@@ -90,6 +94,8 @@ export function applyConfiguratorMaterials(
 ) {
   const paintMats: MeshPhysicalMaterial[] = [];
   const accentMats: MeshPhysicalMaterial[] = [];
+  const contrastMats: MeshPhysicalMaterial[] = [];
+  const contrastNames = vehicle.contrastPaintMaterials ?? [];
   const leatherMats: MeshPhysicalMaterial[] = [];
   const caliperMats: MeshPhysicalMaterial[] = [];
   const emissiveMats: MeshPhysicalMaterial[] = [];
@@ -98,7 +104,11 @@ export function applyConfiguratorMaterials(
     if (!(child instanceof Mesh)) return;
     for (const mat of asPhysical(child.material)) {
       const name = mat.name || "";
-      if (matches(name, vehicle.paintMaterials)) paintMats.push(mat);
+      // Prefix matching: "CarPaint" would also claim "CarPaint (1)" / "CarPaint White".
+      if (matches(name, contrastNames)) contrastMats.push(mat);
+      else if (contrastNames.length && matches(name, vehicle.accentPaintMaterials)) {
+        accentMats.push(mat);
+      } else if (matches(name, vehicle.paintMaterials)) paintMats.push(mat);
       else if (matches(name, vehicle.accentPaintMaterials)) accentMats.push(mat);
       else if (matches(name, vehicle.leatherMaterials)) leatherMats.push(mat);
       else if (matches(name, vehicle.caliperMaterials)) caliperMats.push(mat);
@@ -113,6 +123,7 @@ export function applyConfiguratorMaterials(
     roughness: Math.min(1, options.paint.roughness + 0.12),
     metalness: Math.max(0, options.paint.metalness - 0.05),
   });
+  applyFinish(contrastMats, options.contrast);
   applyFinish(leatherMats, options.interior, { sheen: true });
   applyFinish(caliperMats, options.caliper);
 
@@ -122,6 +133,67 @@ export function applyConfiguratorMaterials(
       mat.emissive.copy(mat.color);
     }
     mat.needsUpdate = true;
+  }
+}
+
+function resolveTone(
+  tone: PartFinish["tone"],
+  tones: { paint: Finish; contrast: Finish },
+): Finish {
+  if (tone === "paint") return tones.paint;
+  if (tone === "contrast") return tones.contrast;
+  return {
+    id: "variant",
+    label: "variant",
+    clearcoat: 0,
+    clearcoatRoughness: 0.1,
+    ...tone,
+  };
+}
+
+function partMeshes(root: Object3D, part: ConfigPart, visit: (mesh: Mesh) => void) {
+  for (const name of part.nodeNames) {
+    root.getObjectByName(name)?.traverse((child) => {
+      if (child instanceof Mesh && !Array.isArray(child.material)) visit(child);
+    });
+  }
+}
+
+/**
+ * Slot options can share geometry and differ only in material (rim finish,
+ * colour-coded bumper). Visible options swap in per-mesh clones; everything
+ * else gets its original material back.
+ */
+export function applyPartFinishes(
+  root: Object3D,
+  vehicle: VehicleDefinition,
+  hiddenPartIds: ReadonlySet<string>,
+  tones: { paint: Finish; contrast: Finish },
+) {
+  const variants = vehicle.parts.filter((part) => part.finish);
+  for (const part of variants) {
+    partMeshes(root, part, (mesh) => {
+      if (mesh.userData.baseMaterial) mesh.material = mesh.userData.baseMaterial;
+    });
+  }
+  for (const part of variants) {
+    if (hiddenPartIds.has(part.id)) continue;
+    const { materials, tone } = part.finish!;
+    const finish = resolveTone(tone, tones);
+    partMeshes(root, part, (mesh) => {
+      const base = (mesh.userData.baseMaterial ?? mesh.material) as Material;
+      if (!materials.includes(base.name)) return;
+      mesh.userData.baseMaterial = base;
+      const cache: Record<string, MeshPhysicalMaterial> = (mesh.userData.variants ??= {});
+      let clone = cache[part.id];
+      if (!clone) {
+        clone = base.clone() as MeshPhysicalMaterial;
+        clone.name = `${VARIANT_PREFIX}${base.name}`;
+        cache[part.id] = clone;
+      }
+      applyFinish([clone], finish);
+      mesh.material = clone;
+    });
   }
 }
 

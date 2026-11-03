@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useMemo } from "react";
-import { Cloud, Clouds, Environment } from "@react-three/drei";
+import { Cloud, Clouds, Environment, Lightformer } from "@react-three/drei";
 import { BackSide, CanvasTexture, MeshLambertMaterial } from "three";
 import type { StudioId } from "@/config/finishes";
 import { useConfigurator } from "@/store/configurator-store";
@@ -106,7 +106,29 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
   );
 }
 
-/** Soft north-light cove: daylight fill, studio HDR on the paint. */
+/**
+ * Procedural car-studio IBL: softbox strips give the paint the long, crisp
+ * highlight lines of a photo studio. Rendered once into a cube map, so it
+ * costs no download and no per-frame work.
+ */
+function StudioLightformers() {
+  return (
+    <Environment resolution={1024} frames={1} environmentIntensity={1}>
+      <color attach="background" args={["#2a2d31"]} />
+      <Lightformer form="rect" intensity={2.2} position={[0, 6, 0]} rotation-x={Math.PI / 2} scale={[12, 2.4, 1]} />
+      <Lightformer form="rect" intensity={1.6} position={[0, 6, -3.2]} rotation-x={Math.PI / 2} scale={[12, 0.8, 1]} />
+      <Lightformer form="rect" intensity={1.6} position={[0, 6, 3.2]} rotation-x={Math.PI / 2} scale={[12, 0.8, 1]} />
+      <Lightformer form="rect" intensity={3} position={[-9, 2.2, 0]} rotation-y={Math.PI / 2} scale={[14, 1.4, 1]} />
+      <Lightformer form="rect" intensity={3} position={[9, 2.2, 0]} rotation-y={-Math.PI / 2} scale={[14, 1.4, 1]} />
+      <Lightformer form="rect" intensity={1.4} position={[0, 2.5, 10]} scale={[10, 3, 1]} />
+      <Lightformer form="rect" intensity={1.1} position={[0, 2.5, -10]} rotation-y={Math.PI} scale={[10, 3, 1]} />
+      <Lightformer form="ring" intensity={1.8} position={[6, 4, 6]} scale={2.5} target={[0, 0, 0]} />
+      <Lightformer form="rect" color="#c9ced4" intensity={0.55} position={[0, -1, 0]} rotation-x={-Math.PI / 2} scale={[30, 30, 1]} />
+    </Environment>
+  );
+}
+
+/** Soft north-light cove: daylight fill, softbox IBL on the paint. */
 function DaylightStudio() {
   return (
     <>
@@ -134,16 +156,14 @@ function DaylightStudio() {
         intensity={36}
         color="#ffffff"
       />
-      <Suspense fallback={null}>
-        <Environment preset="studio" environmentIntensity={0.78} />
-      </Suspense>
+      <StudioLightformers />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
         <circleGeometry args={[18, 64]} />
         <meshStandardMaterial color={DAYLIGHT.floor} roughness={0.72} metalness={0.02} />
       </mesh>
       <mesh position={[0, 5.2, 0]}>
         <cylinderGeometry args={[16, 16, 14, 48, 1, true, Math.PI, Math.PI]} />
-        <meshStandardMaterial color={DAYLIGHT.cove} roughness={0.94} side={BackSide} />
+        <meshBasicMaterial color={DAYLIGHT.cove} side={BackSide} />
       </mesh>
       <FootprintShadow y={0.018} opacity={0.36} />
     </>

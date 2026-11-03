@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
-import { vehicles } from "@/config/catalog";
-import { calipers, interiors, paints } from "@/config/finishes";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, RotateCcw, X } from "lucide-react";
+import {
+  vehicles,
+  type ConfigPart,
+  type ExclusivePartGroup,
+  type VehicleDefinition,
+} from "@/config/catalog";
+import { calipers, interiors, paints, type Finish } from "@/config/finishes";
+import { activeBuildId } from "@/lib/part-visibility";
 import { DESKTOP_MEDIA } from "@/lib/scene-quality";
-import { useConfigurator } from "@/store/configurator-store";
+import { useConfigurator, type ConfigSection } from "@/store/configurator-store";
 
-const tabs = ["Paint", "Interior", "Kit"] as const;
+const tabs: { section: ConfigSection; label: string }[] = [
+  { section: "paint", label: "Exterior" },
+  { section: "kit", label: "Parts" },
+  { section: "interior", label: "Interior" },
+  { section: "summary", label: "Summary" },
+];
 
 const categoryLabel: Record<string, string> = {
   kit: "Kit",
@@ -18,88 +29,509 @@ const categoryLabel: Record<string, string> = {
   body: "Body",
 };
 
-type MobileStep =
-  | { id: string; label: string; kind: "paint" | "calipers" | "interior" }
-  | {
-      id: string;
-      label: string;
-      kind: "parts";
-      parts: (typeof vehicles)["retro"]["parts"];
-    };
+const optionCode = (index: number) => String.fromCharCode(65 + index);
 
-function chunk<T>(items: T[], size: number) {
-  const groups: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    groups.push(items.slice(index, index + size));
-  }
-  return groups;
+function slotChoice(vehicle: VehicleDefinition, slot: ExclusivePartGroup, hidden: readonly string[]) {
+  const index = Math.max(0, slot.partIds.findIndex((id) => !hidden.includes(id)));
+  const part = vehicle.parts.find((item) => item.id === slot.partIds[index]);
+  return { index, id: slot.partIds[index], label: part?.optionLabel ?? part?.label ?? "" };
 }
 
-const sectionToTab: Record<(typeof tabs)[number], "paint" | "interior" | "kit"> = {
-  Paint: "paint",
-  Interior: "interior",
-  Kit: "kit",
-};
+function optionSwatch(part: ConfigPart, paintId: string, contrastPaintId: string) {
+  const tone = part.finish?.tone;
+  if (tone === "paint") return finishById(paints, paintId).color;
+  if (tone === "contrast") return finishById(paints, contrastPaintId).color;
+  return part.swatch;
+}
 
-const tabFromSection = {
-  paint: "Paint",
-  interior: "Interior",
-  kit: "Kit",
-} as const;
+function requiredSlots(vehicle: VehicleDefinition) {
+  return (vehicle.exclusiveGroups ?? []).filter((group) => group.required);
+}
 
-export function ConfigRail() {
-  const [mobile, setMobile] = useState(false);
-  const [step, setStep] = useState(0);
-  const vehicleId = useConfigurator((s) => s.vehicleId);
+function slotPartIds(vehicle: VehicleDefinition) {
+  return new Set(requiredSlots(vehicle).flatMap((group) => group.partIds));
+}
+
+function finishById(list: Finish[], id: string) {
+  return list.find((item) => item.id === id) ?? list[0];
+}
+
+function Swatches({
+  value,
+  onChange,
+  labelPrefix = "",
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  labelPrefix?: string;
+}) {
+  return (
+    <div className="swatch-grid" role="radiogroup">
+      {paints.map((item) => {
+        const active = value === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            className={`swatch ${active ? "is-active" : ""}`}
+            onClick={() => onChange(item.id)}
+            aria-label={`${labelPrefix}${item.label}`}
+            title={item.label}
+          >
+            <span style={{ background: item.color }} />
+            {active && <Check size={12} aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FinishChips({
+  list,
+  value,
+  onChange,
+  disabled,
+}: {
+  list: Finish[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="chip-grid" role="radiogroup">
+      {list.map((item) => {
+        const active = value === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            className={`chip ${active ? "is-active" : ""}`}
+            onClick={() => onChange(item.id)}
+            disabled={disabled}
+          >
+            <i style={{ background: item.color }} aria-hidden />
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PaintSection() {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
   const paintId = useConfigurator((s) => s.paintId);
+  const contrastPaintId = useConfigurator((s) => s.contrastPaintId);
+  const caliperId = useConfigurator((s) => s.caliperId);
+  const setPaint = useConfigurator((s) => s.setPaint);
+  const setContrastPaint = useConfigurator((s) => s.setContrastPaint);
+  const setCaliper = useConfigurator((s) => s.setCaliper);
+  const hasContrast = (vehicle.contrastPaintMaterials?.length ?? 0) > 0;
+  const hasCalipers = vehicle.caliperMaterials.length > 0;
+
+  return (
+    <>
+      <div className="option-block">
+        <div className="option-head">
+          <h2>Body colour</h2>
+          <span>{finishById(paints, paintId).label}</span>
+        </div>
+        <Swatches value={paintId} onChange={setPaint} />
+      </div>
+      {hasContrast && (
+        <div className="option-block">
+          <div className="option-head">
+            <h2>Contrast colour</h2>
+            <span>{finishById(paints, contrastPaintId).label}</span>
+          </div>
+          <p className="hint">Duo-tone roof and window storage boxes.</p>
+          <Swatches value={contrastPaintId} onChange={setContrastPaint} labelPrefix="Contrast " />
+        </div>
+      )}
+      {hasCalipers && (
+        <div className="option-block">
+          <div className="option-head">
+            <h2>Brake calipers</h2>
+            <span>{finishById(calipers, caliperId).label}</span>
+          </div>
+          <FinishChips list={calipers} value={caliperId} onChange={setCaliper} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function InteriorSection() {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
+  const interiorId = useConfigurator((s) => s.interiorId);
+  const setInterior = useConfigurator((s) => s.setInterior);
+  const hasLeather = vehicle.leatherMaterials.length > 0;
+  return (
+    <div className="option-block">
+      <div className="option-head">
+        <h2>Cabin leather</h2>
+        <span>{finishById(interiors, interiorId).label}</span>
+      </div>
+      {!hasLeather && (
+        <p className="hint">This model has no named leather materials.</p>
+      )}
+      <FinishChips
+        list={interiors}
+        value={interiorId}
+        onChange={setInterior}
+        disabled={!hasLeather}
+      />
+    </div>
+  );
+}
+
+function BuildSection() {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
+  const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const selectedPartId = useConfigurator((s) => s.selectedPartId);
+  const applyBuild = useConfigurator((s) => s.applyBuild);
+  const togglePart = useConfigurator((s) => s.togglePart);
+  const focusPart = useConfigurator((s) => s.focusPart);
+  const paintId = useConfigurator((s) => s.paintId);
+  const contrastPaintId = useConfigurator((s) => s.contrastPaintId);
+  const currentBuild = activeBuildId(vehicle, hiddenPartIds);
+  const selectedRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedPartId]);
+
+  return (
+    <>
+      <div className="option-block">
+        <div className="option-head">
+          <h2>Build</h2>
+          <span>{vehicle.builds?.find((b) => b.id === currentBuild)?.label ?? "Custom"}</span>
+        </div>
+        <div className="segmented segmented--lg" role="radiogroup" aria-label="Build">
+          {vehicle.builds?.map((build) => (
+            <button
+              key={build.id}
+              type="button"
+              role="radio"
+              aria-checked={currentBuild === build.id}
+              className={currentBuild === build.id ? "is-active" : ""}
+              onClick={() => applyBuild(build.id)}
+            >
+              {build.label}
+            </button>
+          ))}
+        </div>
+        <p className="hint">
+          {vehicle.builds?.find((b) => b.id === currentBuild)?.description ??
+            "Custom mix of options."}
+        </p>
+      </div>
+
+      <div className="option-block">
+        <h2>Per part</h2>
+        <div className="slot-list">
+          {requiredSlots(vehicle).map((slot) => {
+            const choice = slotChoice(vehicle, slot, hiddenPartIds);
+            const selected = slot.partIds.includes(selectedPartId ?? "");
+            return (
+              <div
+                key={slot.id}
+                ref={selected ? selectedRef : undefined}
+                className={`slot-row ${selected ? "is-selected" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="slot-head"
+                  onClick={() => focusPart(choice.id)}
+                  title={`Show ${slot.label.toLowerCase()}`}
+                >
+                  <span>{slot.label}</span>
+                  <small>
+                    {optionCode(choice.index)} · {choice.label}
+                  </small>
+                </button>
+                <div className="option-grid" role="radiogroup" aria-label={slot.label}>
+                  {slot.partIds.map((id, index) => {
+                    const part = vehicle.parts.find((item) => item.id === id);
+                    if (!part) return null;
+                    const on = id === choice.id;
+                    const swatch = optionSwatch(part, paintId, contrastPaintId);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        className={`option-card ${on ? "is-active" : ""}`}
+                        onClick={() => (on ? focusPart(id) : togglePart(id))}
+                        title={part.description ?? part.optionLabel}
+                      >
+                        <span className="option-code" aria-hidden>
+                          {optionCode(index)}
+                        </span>
+                        <span className="option-name">{part.optionLabel ?? part.label}</span>
+                        {swatch ? (
+                          <i className="option-swatch" style={{ background: swatch }} aria-hidden />
+                        ) : part.nodeNames.length === 0 ? (
+                          <i className="option-swatch is-none" aria-hidden />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SwitchRow({
+  part,
+  on,
+  selected,
+  onToggle,
+  onFocus,
+}: {
+  part: ConfigPart;
+  on: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  onFocus: () => void;
+}) {
+  return (
+    <div className={`switch-row ${selected ? "is-selected" : ""}`}>
+      <button type="button" className="switch-copy" onClick={onFocus}>
+        <span>{part.label}</span>
+        {part.description && <small>{part.description}</small>}
+      </button>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={part.label}
+        className="switch"
+        onClick={onToggle}
+      >
+        <span aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function AccessoriesSection() {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
+  const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const selectedPartId = useConfigurator((s) => s.selectedPartId);
+  const togglePart = useConfigurator((s) => s.togglePart);
+  const focusPart = useConfigurator((s) => s.focusPart);
+  const accessories = vehicle.parts.filter((part) => part.accessory);
+  if (!accessories.length) return null;
+  return (
+    <div className="option-block">
+      <h2>Accessories</h2>
+      <div className="switch-list">
+        {accessories.map((part) => (
+          <SwitchRow
+            key={part.id}
+            part={part}
+            on={!hiddenPartIds.includes(part.id)}
+            selected={selectedPartId === part.id}
+            onToggle={() => togglePart(part.id)}
+            onFocus={() => focusPart(part.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Visibility toggles for model review (body, engine, interior…). */
+function InspectorSection({ collapsible }: { collapsible: boolean }) {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
+  const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const selectedPartId = useConfigurator((s) => s.selectedPartId);
+  const togglePart = useConfigurator((s) => s.togglePart);
+  const setSelectedPart = useConfigurator((s) => s.setSelectedPart);
+  const groups = useMemo(() => {
+    const slots = slotPartIds(vehicle);
+    const map = new Map<string, ConfigPart[]>();
+    for (const part of vehicle.parts) {
+      if (slots.has(part.id) || part.accessory) continue;
+      const list = map.get(part.category) ?? [];
+      list.push(part);
+      map.set(part.category, list);
+    }
+    return [...map.entries()];
+  }, [vehicle]);
+  if (!groups.length) return null;
+
+  const body = groups.map(([category, parts]) => (
+    <div key={category} className="part-group">
+      <h3>{categoryLabel[category] ?? category}</h3>
+      {parts.map((part) => {
+        const on = !hiddenPartIds.includes(part.id);
+        return (
+          <div
+            key={part.id}
+            className={`part-row ${on ? "is-on" : ""} ${selectedPartId === part.id ? "is-selected" : ""}`}
+          >
+            <button
+              type="button"
+              className="part-row-main"
+              onClick={() => setSelectedPart(part.id)}
+              aria-pressed={selectedPartId === part.id}
+            >
+              <span>{part.label}</span>
+            </button>
+            <button
+              type="button"
+              className="part-row-toggle"
+              aria-label={`${on ? "Hide" : "Show"} ${part.label}`}
+              aria-pressed={on}
+              onClick={() => togglePart(part.id)}
+            >
+              {on ? "On" : "Off"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  ));
+
+  if (!collapsible) return <div className="option-block">{body}</div>;
+  return (
+    <details className="inspector">
+      <summary>Model inspector</summary>
+      {body}
+    </details>
+  );
+}
+
+function SummarySection() {
+  const vehicle = vehicles[useConfigurator((s) => s.vehicleId)];
+  const paintId = useConfigurator((s) => s.paintId);
+  const contrastPaintId = useConfigurator((s) => s.contrastPaintId);
   const interiorId = useConfigurator((s) => s.interiorId);
   const caliperId = useConfigurator((s) => s.caliperId);
   const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
-  const selectedPartId = useConfigurator((s) => s.selectedPartId);
+  const resetConfiguration = useConfigurator((s) => s.resetConfiguration);
+  const setConfigSection = useConfigurator((s) => s.setConfigSection);
+  const hidden = new Set(hiddenPartIds);
+  const build = vehicle.builds?.find((b) => b.id === activeBuildId(vehicle, hiddenPartIds));
+  const accessories = vehicle.parts.filter((part) => part.accessory);
+  const hasContrast = (vehicle.contrastPaintMaterials?.length ?? 0) > 0;
+
+  const rows: { section: ConfigSection; title: string; items: [string, string][] }[] = [
+    {
+      section: "paint",
+      title: "Exterior",
+      items: [
+        ["Body colour", finishById(paints, paintId).label],
+        ...(hasContrast
+          ? ([["Contrast colour", finishById(paints, contrastPaintId).label]] as [string, string][])
+          : []),
+        ...(vehicle.caliperMaterials.length
+          ? ([["Brake calipers", finishById(calipers, caliperId).label]] as [string, string][])
+          : []),
+      ],
+    },
+    ...(vehicle.builds?.length
+      ? [
+          {
+            section: "kit" as const,
+            title: `Parts · ${build?.label ?? "Custom"}`,
+            items: requiredSlots(vehicle).map((slot): [string, string] => {
+              const choice = slotChoice(vehicle, slot, hiddenPartIds);
+              return [slot.label, `${optionCode(choice.index)} · ${choice.label}`];
+            }),
+          },
+        ]
+      : []),
+    ...(accessories.length
+      ? [
+          {
+            section: "kit" as const,
+            title: "Accessories",
+            items: accessories.map((part): [string, string] => [
+              part.label,
+              hidden.has(part.id) ? "—" : "Included",
+            ]),
+          },
+        ]
+      : []),
+    {
+      section: "interior",
+      title: "Interior",
+      items: [["Cabin leather", finishById(interiors, interiorId).label]],
+    },
+  ];
+
+  return (
+    <>
+      {rows.map((row, index) => (
+        <section key={row.title} className="summary-block">
+          <header>
+            <h2>
+              <span>{String(index + 1).padStart(2, "0")}</span> {row.title}
+            </h2>
+            <button type="button" className="link-btn" onClick={() => setConfigSection(row.section)}>
+              Edit
+            </button>
+          </header>
+          <dl>
+            {row.items.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd className={value === "—" ? "is-muted" : ""}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+      <button type="button" className="ghost-btn" onClick={resetConfiguration}>
+        <RotateCcw size={14} aria-hidden />
+        Reset configuration
+      </button>
+    </>
+  );
+}
+
+/** Offset of `node` inside the scroll container's content box. */
+function offsetIn(container: HTMLElement, node: HTMLElement) {
+  return (
+    node.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop
+  );
+}
+
+/** Scroll events from programmatic jumps are ignored for this long. */
+const JUMP_LOCK_MS = 700;
+
+export function ConfigRail() {
+  const [mobile, setMobile] = useState(false);
+  const vehicleId = useConfigurator((s) => s.vehicleId);
   const panelOpen = useConfigurator((s) => s.panelOpen);
   const setPanelOpen = useConfigurator((s) => s.setPanelOpen);
   const configSection = useConfigurator((s) => s.configSection);
-  const cameraId = useConfigurator((s) => s.cameraId);
-  const setPaint = useConfigurator((s) => s.setPaint);
-  const setInterior = useConfigurator((s) => s.setInterior);
   const setConfigSection = useConfigurator((s) => s.setConfigSection);
-  const leaveInteriorCamera = useConfigurator((s) => s.leaveInteriorCamera);
-  const setCaliper = useConfigurator((s) => s.setCaliper);
-  const tab = tabFromSection[configSection];
-  const togglePart = useConfigurator((s) => s.togglePart);
-  const setSelectedPart = useConfigurator((s) => s.setSelectedPart);
+  const setActiveSection = useConfigurator((s) => s.setActiveSection);
   const vehicle = vehicles[vehicleId];
-  const paint = paints.find((item) => item.id === paintId);
-  const groupedParts = useMemo(() => {
-    const groups = new Map<string, typeof vehicle.parts>();
-    for (const part of vehicle.parts) {
-      const list = groups.get(part.category) ?? [];
-      list.push(part);
-      groups.set(part.category, list);
-    }
-    return [...groups.entries()];
-  }, [vehicle]);
+  const hasBuilds = (vehicle.builds?.length ?? 0) > 0;
 
-  const mobileSteps = useMemo(() => {
-    const list: MobileStep[] = [{ id: "paint", label: "Colour", kind: "paint" }];
-    if (vehicle.caliperMaterials.length > 0) {
-      list.push({ id: "calipers", label: "Calipers", kind: "calipers" });
-    }
-    list.push({ id: "interior", label: "Cabin", kind: "interior" });
-    for (const [category, parts] of groupedParts) {
-      const name = categoryLabel[category] ?? category;
-      const groups = chunk(parts, 4);
-      groups.forEach((group, index) => {
-        list.push({
-          id: `${category}-${index}`,
-          label: groups.length > 1 ? `${name} ${index + 1}` : name,
-          kind: "parts",
-          parts: group,
-        });
-      });
-    }
-    return list;
-  }, [groupedParts, vehicle.caliperMaterials.length]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Partial<Record<ConfigSection, HTMLElement | null>>>({});
+  const spiedSection = useRef<ConfigSection | null>(null);
+  const jumpLockUntil = useRef(0);
 
   useLayoutEffect(() => {
     const query = window.matchMedia(DESKTOP_MEDIA);
@@ -109,54 +541,60 @@ export function ConfigRail() {
     return () => query.removeEventListener("change", sync);
   }, []);
 
-  const stepIndex = Math.min(step, Math.max(mobileSteps.length - 1, 0));
-  const currentStep = mobileSteps[stepIndex];
-
-  const interiorStepIndex = useMemo(
-    () => mobileSteps.findIndex((item) => item.kind === "interior"),
-    [mobileSteps],
-  );
-
+  /** Section changes from elsewhere (tabs, 3D pick, cabin camera, Edit links) scroll the page. */
   useEffect(() => {
-    if (!mobile || interiorStepIndex < 0) return;
-    if (cameraId === "cabin") {
-      if (step !== interiorStepIndex) setStep(interiorStepIndex);
+    if (spiedSection.current === configSection) {
+      spiedSection.current = null;
       return;
     }
-    if (mobileSteps[step]?.kind === "interior") setStep(0);
-  }, [cameraId, interiorStepIndex, mobile, mobileSteps, step]);
+    const container = scrollRef.current;
+    const selectedRow =
+      configSection === "kit"
+        ? container?.querySelector<HTMLElement>(".slot-row.is-selected, .switch-row.is-selected")
+        : null;
+    const target = selectedRow ?? sectionRefs.current[configSection];
+    if (!container || !target) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    jumpLockUntil.current = performance.now() + JUMP_LOCK_MS;
+    container.scrollTo({
+      top: Math.max(0, offsetIn(container, target) - (selectedRow ? 48 : 0)),
+      behavior: reduced ? "auto" : "smooth",
+    });
+  }, [configSection]);
 
-  function goToStep(next: number) {
-    const clamped = Math.max(0, Math.min(next, mobileSteps.length - 1));
-    const target = mobileSteps[clamped];
-    setStep(clamped);
-    if (target?.kind === "interior") {
-      setConfigSection("interior");
-      return;
+  function onScroll() {
+    const container = scrollRef.current;
+    if (!container || performance.now() < jumpLockUntil.current) return;
+    let current = tabs[0].section;
+    for (const { section } of tabs) {
+      const node = sectionRefs.current[section];
+      if (node && offsetIn(container, node) <= container.scrollTop + 32) current = section;
     }
-    leaveInteriorCamera();
-    if (target?.kind === "parts") setConfigSection("kit");
-    else setConfigSection("paint");
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 4) {
+      current = tabs[tabs.length - 1].section;
+    }
+    if (current === useConfigurator.getState().configSection) return;
+    spiedSection.current = current;
+    setActiveSection(current);
   }
 
-  if (!vehicle || !currentStep) return null;
+  if (!vehicle) return null;
 
   return (
     <aside
       id="config-rail"
-      className={`config-rail ${mobile ? "is-stepped" : ""}`}
+      className={`config-rail ${mobile ? "is-sheet" : ""}`}
       aria-label="Configurator"
       aria-hidden={!panelOpen}
       inert={!panelOpen ? true : undefined}
     >
       <div className="rail-head">
-        <p className="rail-kicker">{vehicle.year}</p>
-        <h1>{vehicle.name}</h1>
-        <p className="rail-sub">{vehicle.subtitle}</p>
-      </div>
-
-      {mobile ? (
-        <div className="rail-steps" aria-label="Configurator steps">
+        <div>
+          <p className="rail-kicker">{vehicle.year}</p>
+          <h1>{vehicle.name}</h1>
+          {!mobile && <p className="rail-sub">{vehicle.subtitle}</p>}
+        </div>
+        {mobile && (
           <button
             type="button"
             className="rail-close"
@@ -165,239 +603,53 @@ export function ConfigRail() {
           >
             <X size={16} aria-hidden />
           </button>
+        )}
+      </div>
+
+      <nav className="rail-tabs" aria-label="Configurator sections">
+        {tabs.map((item) => (
           <button
+            key={item.section}
             type="button"
-            className="step-nav"
-            aria-label="Previous step"
-            disabled={stepIndex === 0}
-            onClick={() => goToStep(stepIndex - 1)}
+            aria-current={configSection === item.section ? "true" : undefined}
+            className={configSection === item.section ? "is-active" : ""}
+            onClick={() => setConfigSection(item.section)}
           >
-            <ChevronLeft size={16} aria-hidden />
+            {item.label}
           </button>
-          <div className="step-copy">
-            <p className="rail-kicker">
-              {stepIndex + 1} / {mobileSteps.length}
-            </p>
-            <p className="step-title">{currentStep.label}</p>
-          </div>
-          <button
-            type="button"
-            className="step-nav"
-            aria-label="Next step"
-            disabled={stepIndex === mobileSteps.length - 1}
-            onClick={() => goToStep(stepIndex + 1)}
+        ))}
+      </nav>
+
+      <div className="rail-scroll" ref={scrollRef} onScroll={onScroll}>
+        {tabs.map((item, index) => (
+          <section
+            key={item.section}
+            ref={(node) => {
+              sectionRefs.current[item.section] = node;
+            }}
+            className="rail-page"
+            aria-labelledby={`rail-page-${item.section}`}
           >
-            <ChevronRight size={16} aria-hidden />
-          </button>
-        </div>
-      ) : (
-        <div className="rail-tabs" role="tablist">
-          {tabs.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={tab === item}
-              className={tab === item ? "is-active" : ""}
-              onClick={() => setConfigSection(sectionToTab[item])}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {((mobile && currentStep.kind === "paint") || (!mobile && tab === "Paint")) && (
-        <section className="rail-section">
-          <h2>Body colour</h2>
-          <p className="hint">
-            Maps to {vehicle.paintMaterials.join(", ") || "unnamed paint"} in the
-            GLB.
-          </p>
-          <div className="swatch-grid">
-            {paints.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`swatch ${paintId === item.id ? "is-active" : ""}`}
-                onClick={() => setPaint(item.id)}
-                aria-pressed={paintId === item.id}
-                aria-label={item.label}
-              >
-                <span style={{ background: item.color }} />
-                {paintId === item.id && <Check size={12} />}
-              </button>
-            ))}
-          </div>
-          <p className="swatch-label">{paint?.label}</p>
-
-          {!mobile && vehicle.caliperMaterials.length > 0 && (
-            <>
-              <h2>Calipers</h2>
-              <div className="choice-list">
-                {calipers.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={caliperId === item.id ? "is-active" : ""}
-                    onClick={() => setCaliper(item.id)}
-                  >
-                    <i style={{ background: item.color }} />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-      )}
-
-      {mobile && currentStep.kind === "calipers" && (
-        <section className="rail-section">
-          <div className="choice-list">
-            {calipers.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={caliperId === item.id ? "is-active" : ""}
-                onClick={() => setCaliper(item.id)}
-              >
-                <i style={{ background: item.color }} />
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {((mobile && currentStep.kind === "interior") ||
-        (!mobile && tab === "Interior")) && (
-        <section className="rail-section">
-          <h2>Cabin leather</h2>
-          <p className="hint">
-            {vehicle.leatherMaterials.length
-              ? "Applies to seat and perforation materials."
-              : "This GLB has no named leather materials — paint still live-updates."}
-          </p>
-          <div className="choice-list">
-            {interiors.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={interiorId === item.id ? "is-active" : ""}
-                onClick={() => setInterior(item.id)}
-                disabled={vehicle.leatherMaterials.length === 0}
-              >
-                <i style={{ background: item.color }} />
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!mobile && tab === "Kit" && (
-        <section className="rail-section">
-          <h2>Options</h2>
-          <p className="hint">
-            OEM base by default. Turn Gelände Werke upgrades on per part below.
-          </p>
-          {groupedParts.flatMap(([category, parts]) => {
-            const oemParts = parts.filter((part) => !part.id.startsWith("gelande-"));
-            const gelandeParts = parts.filter((part) => part.id.startsWith("gelande-"));
-            const blocks: { title: string; list: typeof parts }[] = [];
-            if (category === "wheels") {
-              blocks.push({
-                title: categoryLabel[category] ?? category,
-                list: parts,
-              });
-            } else {
-              if (oemParts.length) {
-                blocks.push({
-                  title: categoryLabel[category] ?? category,
-                  list: oemParts,
-                });
-              }
-              if (gelandeParts.length) {
-                blocks.push({
-                  title: `Gelände · ${categoryLabel[category] ?? category}`,
-                  list: gelandeParts,
-                });
-              }
-            }
-            return blocks.map((block) => (
-            <div key={`${category}-${block.title}`} className="part-group">
-              <h3>{block.title}</h3>
-              {block.list.map((part) => {
-                const on = !hiddenPartIds.includes(part.id);
-                const selected = selectedPartId === part.id;
-                return (
-                  <div
-                    key={part.id}
-                    className={`part-row ${on ? "is-on" : ""} ${selected ? "is-selected" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="part-row-main"
-                      onClick={() => setSelectedPart(part.id)}
-                      aria-pressed={selected}
-                    >
-                      <span>{part.label}</span>
-                      <small>{part.nodeNames.length} nodes</small>
-                    </button>
-                    <button
-                      type="button"
-                      className="part-row-toggle"
-                      aria-label={`${on ? "Hide" : "Show"} ${part.label}`}
-                      aria-pressed={on}
-                      onClick={() => togglePart(part.id)}
-                    >
-                      {on ? "On" : "Off"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            ));
-          })}
-        </section>
-      )}
-
-      {mobile && currentStep.kind === "parts" && (
-        <section className="rail-section">
-          <div className="choice-list">
-            {currentStep.parts.map((part) => {
-              const on = !hiddenPartIds.includes(part.id);
-              const selected = selectedPartId === part.id;
-              return (
-                <div
-                  key={part.id}
-                  className={`part-row ${on ? "is-on" : ""} ${selected ? "is-selected" : ""}`}
-                >
-                  <button
-                    type="button"
-                    className="part-row-main"
-                    onClick={() => setSelectedPart(part.id)}
-                    aria-pressed={selected}
-                  >
-                    <span>{part.label}</span>
-                    <small>{part.nodeNames.length}</small>
-                  </button>
-                  <button
-                    type="button"
-                    className="part-row-toggle"
-                    aria-label={`${on ? "Hide" : "Show"} ${part.label}`}
-                    aria-pressed={on}
-                    onClick={() => togglePart(part.id)}
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+            <h2 className="rail-page-title" id={`rail-page-${item.section}`}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              {item.label}
+            </h2>
+            {item.section === "paint" && <PaintSection />}
+            {item.section === "kit" &&
+              (hasBuilds ? (
+                <>
+                  <BuildSection />
+                  <AccessoriesSection />
+                  <InspectorSection collapsible />
+                </>
+              ) : (
+                <InspectorSection collapsible={false} />
+              ))}
+            {item.section === "interior" && <InteriorSection />}
+            {item.section === "summary" && <SummarySection />}
+          </section>
+        ))}
+      </div>
     </aside>
   );
 }
