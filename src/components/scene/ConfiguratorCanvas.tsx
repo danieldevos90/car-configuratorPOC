@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { AdaptiveDpr } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { vehicles } from "@/config/catalog";
 import { useSceneDpr } from "@/hooks/useSceneDpr";
@@ -81,14 +82,19 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
     <Canvas
       className="scene-canvas"
       dpr={dpr}
+      frameloop="always"
+      performance={{ min: isCompactDevice ? 0.5 : 0.7 }}
+      onCreated={(state) => state.invalidate()}
       gl={{
         antialias: !isCompactDevice,
-        powerPreference: isCompactDevice ? "low-power" : "high-performance",
+        powerPreference: "high-performance",
         alpha: false,
         stencil: false,
+        depth: true,
       }}
       camera={{ fov: 32, near: 0.1, far: 220, position: [7.8, 2.05, 9.2] }}
     >
+      {isCompactDevice ? <AdaptiveDpr /> : null}
       <SceneBusyReporter pending={!resolved || !vehicleReady} />
       <Studio studioId={studioId} />
       <CameraRig baseDpr={dpr} />

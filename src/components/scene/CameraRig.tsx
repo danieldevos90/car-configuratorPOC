@@ -33,6 +33,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
   const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const panelOpen = useConfigurator((s) => s.panelOpen);
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const setDpr = useThree((s) => s.setDpr);
   const size = useThree((s) => s.size);
   const sizeRef = useRef(size);
@@ -56,17 +57,16 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
     clearTimeout(navigationIdleRef.current);
     navigationIdleRef.current = setTimeout(() => {
       setSceneNavigating(false);
-      setDpr(baseDprRef.current);
+      if (!isCompactDevice) setDpr(baseDprRef.current);
     }, NAVIGATION_IDLE_MS);
-  }, [setDpr, setSceneNavigating]);
+  }, [isCompactDevice, setDpr, setSceneNavigating]);
 
   const beginNavigation = useCallback(() => {
     clearTimeout(navigationIdleRef.current);
     setSceneNavigating(true);
+    if (isCompactDevice) return;
     const [, max] = baseDprRef.current;
-    const scale = isCompactDevice ? 0.72 : 0.88;
-    const cap = isCompactDevice ? 1.35 : 1.85;
-    const scaled = Math.max(1, Math.min(cap, max * scale));
+    const scaled = Math.max(1, Math.min(1.85, max * 0.88));
     setDpr([1, scaled]);
   }, [isCompactDevice, setDpr, setSceneNavigating]);
 
@@ -158,11 +158,16 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
     }
   }, [panelOpen, size.width, size.height]);
 
+  useEffect(() => {
+    invalidate();
+  }, [panelOpen, size.width, size.height, invalidate]);
+
   useFrame((_, delta) => {
     if (!(camera instanceof PerspectiveCamera)) return;
     const target = interior ? { x: 0, y: 0 } : panelShift.current;
     const applied = appliedShift.current;
-    const ease = 1 - Math.exp(-delta * 7);
+    const snap = isCompactDevice;
+    const ease = snap ? 1 : 1 - Math.exp(-delta * 7);
     const x = Math.abs(target.x - applied.x) < 0.5 ? target.x : applied.x + (target.x - applied.x) * ease;
     const y = Math.abs(target.y - applied.y) < 0.5 ? target.y : applied.y + (target.y - applied.y) * ease;
     if (x === applied.x && y === applied.y && applied.w === size.width && applied.h === size.height) {
@@ -171,6 +176,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
     appliedShift.current = { x, y, w: size.width, h: size.height };
     if (x === 0 && y === 0) camera.clearViewOffset();
     else camera.setViewOffset(size.width, size.height, x, y, size.width, size.height);
+    if (!snap && (x !== target.x || y !== target.y)) invalidate();
   });
 
   return (
@@ -186,7 +192,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
       <CameraControls
         ref={controls}
         makeDefault
-        regress={false}
+        regress={isCompactDevice}
         minDistance={interior ? 0.18 : 2.2}
         maxDistance={interior ? 2.8 : 40}
         minPolarAngle={interior ? 0.35 : 0}

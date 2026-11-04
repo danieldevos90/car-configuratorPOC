@@ -30,9 +30,12 @@ function matches(name: string, patterns: string[]) {
 export function sanitizeVehicleMaterials(
   root: Object3D,
   vehicle: VehicleDefinition,
+  liteGpu = false,
 ) {
   root.traverse((child) => {
     if (!(child instanceof Mesh)) return;
+    child.matrixAutoUpdate = false;
+    child.updateMatrix();
     for (const mat of asPhysical(child.material)) {
       const name = mat.name || "";
       const isGlass =
@@ -45,13 +48,28 @@ export function sanitizeVehicleMaterials(
 
       if (isGlass) {
         mat.transparent = true;
-        mat.transmission = Math.max(mat.transmission, 0.85);
-        mat.thickness = mat.thickness || 0.4;
-        mat.roughness = Math.min(mat.roughness, 0.08);
         mat.metalness = 0;
+        mat.roughness = Math.min(mat.roughness, 0.08);
+        if (liteGpu) {
+          // Transmission is a extra fullscreen pass per surface — too heavy on phones.
+          mat.transmission = 0;
+          mat.thickness = 0;
+          mat.opacity = 0.32;
+          mat.depthWrite = false;
+        } else {
+          mat.transmission = Math.max(mat.transmission, 0.85);
+          mat.thickness = mat.thickness || 0.4;
+        }
       } else if (CHROME_HINT.test(name) && !name.startsWith("int")) {
         mat.metalness = Math.max(mat.metalness, 0.85);
         mat.roughness = Math.min(mat.roughness, 0.22);
+      }
+
+      if (liteGpu) {
+        mat.clearcoat = 0;
+        mat.clearcoatRoughness = 0.2;
+        if ("sheen" in mat) mat.sheen = 0;
+        if ("iridescence" in mat) mat.iridescence = 0;
       }
 
       mat.needsUpdate = true;
@@ -90,6 +108,7 @@ export function applyConfiguratorMaterials(
     interior: Finish;
     caliper: Finish;
     lightsOn: boolean;
+    liteGpu?: boolean;
   },
 ) {
   const paintMats: MeshPhysicalMaterial[] = [];
@@ -117,15 +136,19 @@ export function applyConfiguratorMaterials(
     }
   });
 
-  applyFinish(paintMats, options.paint);
+  const coat = options.liteGpu
+    ? { clearcoat: 0, clearcoatRoughness: 0.4 }
+    : {};
+  applyFinish(paintMats, { ...options.paint, ...coat });
   applyFinish(accentMats, {
     ...options.paint,
     roughness: Math.min(1, options.paint.roughness + 0.12),
     metalness: Math.max(0, options.paint.metalness - 0.05),
+    ...coat,
   });
-  applyFinish(contrastMats, options.contrast);
-  applyFinish(leatherMats, options.interior, { sheen: true });
-  applyFinish(caliperMats, options.caliper);
+  applyFinish(contrastMats, { ...options.contrast, ...coat });
+  applyFinish(leatherMats, { ...options.interior, ...coat }, { sheen: !options.liteGpu });
+  applyFinish(caliperMats, { ...options.caliper, ...coat });
 
   for (const mat of emissiveMats) {
     mat.emissiveIntensity = options.lightsOn ? 4 : 0.05;

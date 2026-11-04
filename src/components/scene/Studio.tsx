@@ -4,6 +4,7 @@ import { Suspense, useMemo } from "react";
 import { Cloud, Clouds, Environment, Lightformer } from "@react-three/drei";
 import { BackSide, CanvasTexture, MeshLambertMaterial } from "three";
 import type { StudioId } from "@/config/finishes";
+import { iblResolution } from "@/lib/scene-quality";
 import { useConfigurator } from "@/store/configurator-store";
 import { ForestPine } from "./ForestPine";
 import { FOREST_SKY_URL } from "./outdoor-stage";
@@ -111,9 +112,9 @@ function FootprintShadow({ opacity, y }: { opacity: number; y: number }) {
  * highlight lines of a photo studio. Rendered once into a cube map, so it
  * costs no download and no per-frame work.
  */
-function StudioLightformers() {
+function StudioLightformers({ resolution }: { resolution: number }) {
   return (
-    <Environment resolution={1024} frames={1} environmentIntensity={1}>
+    <Environment resolution={resolution} frames={1} environmentIntensity={1}>
       <color attach="background" args={["#2a2d31"]} />
       <Lightformer form="rect" intensity={2.2} position={[0, 6, 0]} rotation-x={Math.PI / 2} scale={[12, 2.4, 1]} />
       <Lightformer form="rect" intensity={1.6} position={[0, 6, -3.2]} rotation-x={Math.PI / 2} scale={[12, 0.8, 1]} />
@@ -129,42 +130,51 @@ function StudioLightformers() {
 }
 
 /** Soft north-light cove: daylight fill, softbox IBL on the paint. */
-function DaylightStudio() {
+function DaylightStudio({ lite }: { lite: boolean }) {
+  const ibl = iblResolution(lite);
   return (
     <>
       <color attach="background" args={[DAYLIGHT.sky]} />
       <fog attach="fog" args={[DAYLIGHT.sky, 18, 56]} />
-      <hemisphereLight args={["#f7fbff", "#c5ccd4", 1.05]} />
-      <spotLight
-        position={[5.5, 9.5, 5]}
-        angle={0.55}
-        penumbra={1}
-        intensity={48}
-        color="#fff8f2"
-      />
-      <spotLight
-        position={[-6, 7.5, -2]}
-        angle={0.7}
-        penumbra={1}
-        intensity={22}
-        color="#e7f0ff"
-      />
-      <spotLight
-        position={[0, 11, 1.2]}
-        angle={0.75}
-        penumbra={1}
-        intensity={36}
-        color="#ffffff"
-      />
-      <StudioLightformers />
+      <hemisphereLight args={["#f7fbff", "#c5ccd4", lite ? 1.2 : 1.05]} />
+      {lite ? (
+        <directionalLight position={[5.5, 9.5, 5]} intensity={2.2} color="#fff8f2" />
+      ) : (
+        <>
+          <spotLight
+            position={[5.5, 9.5, 5]}
+            angle={0.55}
+            penumbra={1}
+            intensity={48}
+            color="#fff8f2"
+          />
+          <spotLight
+            position={[-6, 7.5, -2]}
+            angle={0.7}
+            penumbra={1}
+            intensity={22}
+            color="#e7f0ff"
+          />
+          <spotLight
+            position={[0, 11, 1.2]}
+            angle={0.75}
+            penumbra={1}
+            intensity={36}
+            color="#ffffff"
+          />
+        </>
+      )}
+      <StudioLightformers resolution={ibl} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
-        <circleGeometry args={[18, 64]} />
-        <meshStandardMaterial color={DAYLIGHT.floor} roughness={0.72} metalness={0.02} />
+        <circleGeometry args={[18, lite ? 24 : 64]} />
+        <meshBasicMaterial color={DAYLIGHT.floor} />
       </mesh>
-      <mesh position={[0, 5.2, 0]}>
-        <cylinderGeometry args={[16, 16, 14, 48, 1, true, Math.PI, Math.PI]} />
-        <meshBasicMaterial color={DAYLIGHT.cove} side={BackSide} />
-      </mesh>
+      {lite ? null : (
+        <mesh position={[0, 5.2, 0]}>
+          <cylinderGeometry args={[16, 16, 14, 48, 1, true, Math.PI, Math.PI]} />
+          <meshBasicMaterial color={DAYLIGHT.cove} side={BackSide} />
+        </mesh>
+      )}
       <FootprintShadow y={0.018} opacity={0.36} />
     </>
   );
@@ -173,10 +183,11 @@ function DaylightStudio() {
 export function Studio({ studioId }: { studioId: StudioId }) {
   const sceneNavigating = useConfigurator((s) => s.sceneNavigating);
   const highDetail = useConfigurator((s) => s.highDetail);
+  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const outdoor = studioId === "road";
-  const liteSky = sceneNavigating || !highDetail;
+  const liteSky = sceneNavigating || !highDetail || isCompactDevice;
 
-  if (!outdoor) return <DaylightStudio />;
+  if (!outdoor) return <DaylightStudio lite={isCompactDevice} />;
 
   return (
     <>

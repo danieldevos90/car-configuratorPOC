@@ -14,12 +14,14 @@ useGLTF.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
 );
 import type { CameraControlsImpl } from "@react-three/drei";
-import { ThreeEvent, useThree } from "@react-three/fiber";
+import { useThree } from "@react-three/fiber";
 import {
   Box3,
   Group,
   Object3D,
   PerspectiveCamera,
+  Raycaster,
+  Vector2,
   Vector3,
   type Camera,
   type WebGLRenderer,
@@ -70,10 +72,13 @@ function prepareScene(
     child.castShadow = false;
     child.receiveShadow = false;
   });
-  sanitizeVehicleMaterials(scene, vehicle);
+  sanitizeVehicleMaterials(scene, vehicle, isCompactDevice);
   const maxAniso = gl.capabilities.getMaxAnisotropy();
-  const anisotropy =
-    !isCompactDevice || highDetail ? maxAniso : Math.min(8, maxAniso);
+  const anisotropy = isCompactDevice
+    ? 1
+    : highDetail
+      ? maxAniso
+      : Math.min(8, maxAniso);
   tuneVehicleTextureSampling(scene, anisotropy, textureMaxSize);
 }
 
@@ -223,6 +228,7 @@ function VehicleScene({
 }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const controls = useThree((s) => s.controls) as CameraControlsImpl | null;
   const group = useRef<Group>(null);
   const namedRef = useRef<Map<string, Object3D>>(new Map());
@@ -233,6 +239,7 @@ function VehicleScene({
   const caliperId = useConfigurator((s) => s.caliperId);
   const lightsOn = useConfigurator((s) => s.lightsOn);
   const hiddenPartIds = useConfigurator((s) => s.hiddenPartIds);
+  const cameraId = useConfigurator((s) => s.cameraId);
   const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const highDetail = useConfigurator((s) => s.highDetail);
   const textureMaxSize = useConfigurator((s) => s.textureMaxSize);
@@ -319,9 +326,17 @@ function VehicleScene({
     const contrast = paints.find((p) => p.id === contrastPaintId) ?? paint;
     const interior = interiors.find((p) => p.id === interiorId) ?? interiors[0];
     const caliper = calipers.find((p) => p.id === caliperId) ?? calipers[0];
-    const options = { paint, contrast, interior, caliper, lightsOn };
+    const options = {
+      paint,
+      contrast,
+      interior,
+      caliper,
+      lightsOn,
+      liteGpu: isCompactDevice,
+    };
     applyConfiguratorMaterials(baseScene, vehicle, options);
     if (kitScene) applyConfiguratorMaterials(kitScene, vehicle, options);
+    invalidate();
   }, [
     baseScene,
     kitScene,
@@ -331,20 +346,28 @@ function VehicleScene({
     interiorId,
     caliperId,
     lightsOn,
+    isCompactDevice,
+    invalidate,
   ]);
 
   useEffect(() => {
     const hidden = new Set(hiddenPartIds);
+    const cullCabin =
+      isCompactDevice && cameraId !== "cabin";
     // Options can share nodes (finish variants), so hide first and let any visible option win.
     for (const visible of [false, true]) {
       for (const part of vehicle.parts) {
-        if (hidden.has(part.id) === visible) continue;
+        const forcedOff =
+          cullCabin && (part.category === "interior" || part.category === "mechanical");
+        const show = !hidden.has(part.id) && !forcedOff;
+        if (show !== visible) continue;
         const root = sceneForPart(part, baseScene, kitScene);
         if (root) setPartVisibility(root, part, visible);
       }
     }
     updateContacts();
-  }, [hiddenPartIds, vehicle, baseScene, kitScene, updateContacts]);
+    invalidate();
+  }, [hiddenPartIds, vehicle, baseScene, kitScene, updateContacts, isCompactDevice, cameraId, invalidate]);
 
   useEffect(() => {
     const paint = paints.find((p) => p.id === paintId) ?? paints[0];
@@ -352,7 +375,8 @@ function VehicleScene({
     const hidden = new Set(hiddenPartIds);
     applyPartFinishes(baseScene, vehicle, hidden, { paint, contrast });
     if (kitScene) applyPartFinishes(kitScene, vehicle, hidden, { paint, contrast });
-  }, [hiddenPartIds, vehicle, baseScene, kitScene, paintId, contrastPaintId]);
+    invalidate();
+  }, [hiddenPartIds, vehicle, baseScene, kitScene, paintId, contrastPaintId, invalidate]);
 
   useEffect(() => {
     if (!focusRequest || !controls) return;
@@ -394,15 +418,59 @@ function VehicleScene({
 
   const selectableNames = useMemo(() => new Set(partByNode.keys()), [partByNode]);
 
-  const onClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    if (event.delta > PICK_DRAG_TOLERANCE) return;
-    const nodeName = findNamedAncestor(event.object, selectableNames);
-    const candidates = nodeName ? partByNode.get(nodeName) ?? [] : [];
-    const partId = candidates.find((id) => !hiddenPartIds.includes(id)) ?? candidates[0];
-    if (partId) pickPart(partId);
-    else setSelectedPart(null);
-  };
+  /** One-shot raycast on tap. R3F onClick would raycast the whole 6.5M-tri model on every pointermove. */
+  useEffect(() => {
+    const el = gl.domElement;
+    const pointer = new Vector2();
+    const raycaster = new Raycaster();
+    const origin = { x: 0, y: 0 };
+    const pickable: Object3D[] = [];
+    for (const name of selectableNames) {
+      const node = namedRef.current.get(name) ?? baseScene.getObjectByName(name);
+      if (node) pickable.push(node);
+    }
+
+    const onDown = (event: PointerEvent) => {
+      origin.x = event.clientX;
+      origin.y = event.clientY;
+    };
+    const onUp = (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > PICK_DRAG_TOLERANCE) {
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      pointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(pickable, true);
+      const hit = hits.find((item) => item.object.visible);
+      const nodeName = hit ? findNamedAncestor(hit.object, selectableNames) : null;
+      const candidates = nodeName ? partByNode.get(nodeName) ?? [] : [];
+      const partId =
+        candidates.find((id) => !hiddenPartIds.includes(id)) ?? candidates[0];
+      if (partId) pickPart(partId);
+      else setSelectedPart(null);
+    };
+
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+    };
+  }, [
+    gl,
+    camera,
+    selectableNames,
+    partByNode,
+    hiddenPartIds,
+    pickPart,
+    setSelectedPart,
+    baseScene,
+  ]);
 
   const outdoor = studioId === "road";
   const shadowY = outdoor ? 0.056 : 0.019;
@@ -410,11 +478,7 @@ function VehicleScene({
 
   return (
     <>
-      <group
-        ref={group}
-        rotation={[-Math.PI / 2, 0, 0]}
-        onClick={onClick}
-      >
+      <group ref={group} rotation={[-Math.PI / 2, 0, 0]}>
         <primitive object={baseScene} />
         {kitScene ? <primitive object={kitScene} /> : null}
       </group>

@@ -23,8 +23,9 @@ export function isCompactViewport() {
 }
 
 const DESKTOP_DPR_CAP = 2;
-const MOBILE_DPR_CAP_HIGH = 1.5;
-const MOBILE_DPR_CAP_LITE = 1;
+/** Floor so AdaptiveDpr can drop below 1 while orbiting. */
+const MOBILE_DPR_MIN = 0.65;
+const MOBILE_DPR_CAP = 1;
 
 /** Match physical pixels on HiDPI without oversampling the whole framebuffer. */
 export function cappedDevicePixelRatio(cap: number) {
@@ -35,28 +36,22 @@ export function cappedDevicePixelRatio(cap: number) {
 /** Canvas DPR range: desktop stays sharp; mobile stays within GPU budget. */
 export function sceneDprRange(
   isCompactDevice: boolean,
-  highDetail: boolean,
+  _highDetail: boolean,
 ): [number, number] {
-  if (isCompactDevice) {
-    const cap = highDetail ? MOBILE_DPR_CAP_HIGH : MOBILE_DPR_CAP_LITE;
-    return [1, cappedDevicePixelRatio(cap)];
-  }
+  if (isCompactDevice) return [MOBILE_DPR_MIN, MOBILE_DPR_CAP];
   return [1, cappedDevicePixelRatio(DESKTOP_DPR_CAP)];
 }
 
 /**
- * High-detail scene extras (grass, clouds, HDR sky) on good connections.
- * Does not gate desktop render sharpness — see textureCap / sceneDprRange.
+ * High-detail extras (grass, clouds, 4K maps). Compact viewports stay on the
+ * lite GPU path even on Wi‑Fi — connection speed is not fill-rate.
  */
 export function shouldLoadHighDetail(isCompactDevice: boolean) {
+  if (isCompactDevice) return false;
   const connection = getConnection();
   if (connection?.saveData) return false;
 
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  if (isCompactDevice && typeof memory === "number" && memory <= 2) return false;
-
   const type = connection?.type;
-  if (type === "wifi" || type === "ethernet") return true;
   if (type === "cellular" || type === "wimax" || type === "bluetooth") return false;
 
   const effective = connection?.effectiveType;
@@ -67,12 +62,17 @@ export function shouldLoadHighDetail(isCompactDevice: boolean) {
     return false;
   }
 
-  return !isCompactDevice;
+  return true;
 }
 
 export function textureCap(isCompactDevice: boolean, highDetail: boolean) {
-  if (isCompactDevice) return highDetail ? 1024 : 512;
-  return 4096;
+  if (isCompactDevice) return 512;
+  return highDetail ? 4096 : 2048;
+}
+
+/** PMREM cube face size. 1024 is ~24 MB of IBL; phones stay at 256. */
+export function iblResolution(isCompactDevice: boolean) {
+  return isCompactDevice ? 256 : 1024;
 }
 
 export function subscribeNetworkQuality(onChange: () => void) {
