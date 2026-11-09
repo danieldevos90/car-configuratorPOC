@@ -1379,17 +1379,29 @@ button:disabled {
     right: 20px;
     bottom: 0;
     left: 20px;
+    justify-content: safe center;
     padding-bottom: 20px;
   }
 
   .scene-thumbs button {
-    flex: 1 1 0;
+    flex: 1 1 88px;
     width: auto;
-    min-width: 0;
+    min-width: 88px;
+    max-width: 120px;
   }
 
-  .app-shell.is-panel-open .stage-frame,
-  .app-shell.is-panel-open .scene-thumbs {
+  .scene-thumbs img,
+  .scene-thumbs .scene-thumb-icon {
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .stage-frame .camera-bar {
+    bottom: 132px;
+    left: 20px;
+  }
+
+  .app-shell.is-panel-open .stage-frame {
     right: calc(min(420px, 100vw - 28px) + 32px);
   }
 
@@ -1883,8 +1895,7 @@ button:disabled {
     width: 380px;
   }
 
-  .app-shell.is-panel-open .stage-frame,
-  .app-shell.is-panel-open .scene-thumbs {
+  .app-shell.is-panel-open .stage-frame {
     right: 412px;
   }
 }
@@ -1895,8 +1906,7 @@ button:disabled {
     right: 24px;
   }
 
-  .app-shell.is-panel-open .stage-frame,
-  .app-shell.is-panel-open .scene-thumbs {
+  .app-shell.is-panel-open .stage-frame {
     right: 500px;
   }
 

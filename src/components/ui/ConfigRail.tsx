@@ -11,6 +11,7 @@ import {
 import { calipers, interiors, paints, type Finish } from "@/config/finishes";
 import { activeBuildId } from "@/lib/part-visibility";
 import { DESKTOP_MEDIA } from "@/lib/scene-quality";
+import type { CameraId } from "@/config/finishes";
 import { useConfigurator, type ConfigSection } from "@/store/configurator-store";
 
 const tabs: { section: ConfigSection; label: string }[] = [
@@ -245,6 +246,7 @@ function BuildSection() {
                 key={slot.id}
                 ref={selected ? selectedRef : undefined}
                 className={`slot-row ${selected ? "is-selected" : ""}`}
+                data-slot-id={slot.id}
               >
                 <button
                   type="button"
@@ -518,6 +520,27 @@ function offsetIn(container: HTMLElement, node: HTMLElement) {
 /** Scroll events from programmatic jumps are ignored for this long. */
 const JUMP_LOCK_MS = 1800;
 
+function cameraForKitSlot(slotId: string): CameraId {
+  return slotId === "wheels" ? "wheels" : "three-quarter";
+}
+
+function syncKitSlotCamera(container: HTMLElement) {
+  const anchor = container.scrollTop + 80;
+  let slotId: string | null = null;
+  let bestTop = -Infinity;
+  container.querySelectorAll<HTMLElement>("[data-slot-id]").forEach((row) => {
+    const top = offsetIn(container, row);
+    if (top <= anchor && top > bestTop) {
+      bestTop = top;
+      slotId = row.dataset.slotId ?? null;
+    }
+  });
+  if (!slotId) return;
+  const next = cameraForKitSlot(slotId);
+  const { cameraId, setCamera } = useConfigurator.getState();
+  if (cameraId !== next) setCamera(next);
+}
+
 export function ConfigRail() {
   const [mobile, setMobile] = useState(false);
   const vehicleId = useConfigurator((s) => s.vehicleId);
@@ -560,6 +583,11 @@ export function ConfigRail() {
       top: Math.max(0, offsetIn(container, target) - (selectedRow ? 48 : 0)),
       behavior: reduced ? "auto" : "smooth",
     });
+    if (configSection === "kit") {
+      window.setTimeout(() => {
+        if (scrollRef.current) syncKitSlotCamera(scrollRef.current);
+      }, JUMP_LOCK_MS);
+    }
   }, [configSection]);
 
   function onScroll() {
@@ -573,9 +601,12 @@ export function ConfigRail() {
     if (container.scrollTop + container.clientHeight >= container.scrollHeight - 4) {
       current = tabs[tabs.length - 1].section;
     }
-    if (current === useConfigurator.getState().configSection) return;
-    spiedSection.current = current;
-    setActiveSection(current);
+    const state = useConfigurator.getState();
+    if (current !== state.configSection) {
+      spiedSection.current = current;
+      setActiveSection(current);
+    }
+    if (current === "kit") syncKitSlotCamera(container);
   }
 
   if (!vehicle) return null;

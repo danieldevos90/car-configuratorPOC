@@ -74,9 +74,9 @@ export function viewStillCandidates(
     ])];
   }
   if (camera !== "wheels") {
-    const sources = [viewStillSrc(camera, paint, "retro", "daylight")];
+    const sources = [viewStillSrc(camera, paint, wheel, "daylight")];
     if (paint !== "gmanufaktur") {
-      sources.push(viewStillSrc(camera, "gmanufaktur", "retro", "daylight"));
+      sources.push(viewStillSrc(camera, "gmanufaktur", wheel, "daylight"));
     }
     return sources;
   }
