@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, RotateCcw, X } from "lucide-react";
+import { Check, RotateCcw } from "lucide-react";
 import {
   vehicles,
   type ConfigPart,
@@ -70,19 +70,20 @@ function Swatches({
       {paints.map((item) => {
         const active = value === item.id;
         return (
-          <button
-            key={item.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            className={`swatch ${active ? "is-active" : ""}`}
-            onClick={() => onChange(item.id)}
-            aria-label={`${labelPrefix}${item.label}`}
-            title={item.label}
-          >
-            <span style={{ background: item.color }} />
-            {active && <Check size={12} aria-hidden />}
-          </button>
+          <div key={item.id} className="swatch-cell">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={active}
+              className={`swatch ${active ? "is-active" : ""}`}
+              onClick={() => onChange(item.id)}
+              aria-label={`${labelPrefix}${item.label}`}
+              title={item.label}
+            >
+              <span style={{ background: item.color }} />
+              {active && <Check size={12} aria-hidden />}
+            </button>
+          </div>
         );
       })}
     </div>
@@ -515,13 +516,12 @@ function offsetIn(container: HTMLElement, node: HTMLElement) {
 }
 
 /** Scroll events from programmatic jumps are ignored for this long. */
-const JUMP_LOCK_MS = 700;
+const JUMP_LOCK_MS = 1800;
 
 export function ConfigRail() {
   const [mobile, setMobile] = useState(false);
   const vehicleId = useConfigurator((s) => s.vehicleId);
   const panelOpen = useConfigurator((s) => s.panelOpen);
-  const setPanelOpen = useConfigurator((s) => s.setPanelOpen);
   const configSection = useConfigurator((s) => s.configSection);
   const setConfigSection = useConfigurator((s) => s.setConfigSection);
   const setActiveSection = useConfigurator((s) => s.setActiveSection);
@@ -594,16 +594,6 @@ export function ConfigRail() {
           <h1>{vehicle.name}</h1>
           {!mobile && <p className="rail-sub">{vehicle.subtitle}</p>}
         </div>
-        {mobile && (
-          <button
-            type="button"
-            className="rail-close"
-            aria-label="Close configurator"
-            onClick={() => setPanelOpen(false)}
-          >
-            <X size={16} aria-hidden />
-          </button>
-        )}
       </div>
 
       <nav className="rail-tabs" aria-label="Configurator sections">

@@ -84,13 +84,14 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const inside = INTERIOR_VIEWS.has(preset.id);
 
-    rig.minDistance = inside ? 0.18 : 2.2;
-    rig.maxDistance = inside ? 2.8 : 40;
+    rig.minDistance = inside ? 0.18 : preset.id === "wheels" ? 0.55 : 2.2;
+    rig.maxDistance = inside ? 2.8 : 10.6;
     if (camera instanceof PerspectiveCamera) {
       camera.fov = inside ? INTERIOR_FOV : EXTERIOR_FOV;
       camera.near = inside ? 0.05 : 0.1;
       camera.updateProjectionMatrix();
     }
+    if (preset.id === "wheels") return;
 
     const [x, y, z] = preset.position;
     const [tx, ty, tz] = preset.target;
@@ -194,7 +195,7 @@ export function CameraRig({ baseDpr }: CameraRigProps) {
         makeDefault
         regress={isCompactDevice}
         minDistance={interior ? 0.18 : 2.2}
-        maxDistance={interior ? 2.8 : 40}
+        maxDistance={interior ? 2.8 : 10.6}
         minPolarAngle={interior ? 0.35 : 0}
         maxPolarAngle={interior ? Math.PI / 1.55 : Math.PI / 1.92}
         smoothTime={interior ? 0.22 : 0.1}

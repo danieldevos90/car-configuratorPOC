@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import { MinimalLoadingScreen } from "./MinimalLoadingScreen";
+
+const LEAVE_MS = 680;
 
 type Props = {
   sceneReady: boolean;
@@ -9,8 +12,22 @@ type Props = {
 
 export function LoadingOverlay({ sceneReady }: Props) {
   const { visible } = useLoadingOverlay(sceneReady);
+  const [present, setPresent] = useState(true);
 
-  if (!visible) return null;
+  useEffect(() => {
+    if (visible) {
+      setPresent(true);
+      return;
+    }
+    const timeout = window.setTimeout(() => setPresent(false), LEAVE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [visible]);
 
-  return <MinimalLoadingScreen className="loading-screen--overlay" />;
+  if (!present) return null;
+
+  return (
+    <MinimalLoadingScreen
+      className={`loading-screen--overlay${visible ? "" : " is-leaving"}`}
+    />
+  );
 }

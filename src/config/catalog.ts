@@ -551,7 +551,7 @@ const VIEW = {
   side: { azimuth: Math.PI / 2, polar: 1.38 },
   rear: { azimuth: Math.PI - 0.6, polar: 1.3 },
   roof: { azimuth: 0.75, polar: 0.9 },
-  wheels: { azimuth: 0.9, polar: 1.42, camera: "wheels" },
+  wheels: { azimuth: 1.22, polar: 1.28, camera: "wheels" },
 } satisfies Record<string, PartView>;
 
 /** One choice inside a slot; part id becomes `${key}-${slot.id}`. */
@@ -750,8 +750,8 @@ const gwVehicle: VehicleDefinition = {
       view: VIEW.roof,
     },
     ...gwSlotParts,
-    { id: "roof-rack", label: "Roof rack", description: "Wood-inlay expedition rack", nodeNames: ["Roof-rack"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.roof },
-    { id: "ladder", label: "Rear ladder", description: "Roof access", nodeNames: ["Ladder"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.rear },
+    { id: "roof-rack", label: "Roof rack", description: "Wood-inlay expedition rack", nodeNames: ["Roof-rack"], category: "kit", defaultVisible: false, accessory: true, view: VIEW.roof },
+    { id: "ladder", label: "Rear ladder", description: "Roof access", nodeNames: ["Ladder"], category: "kit", defaultVisible: false, accessory: true, view: VIEW.rear },
     { id: "skidplate", label: "Skidplate", description: "Front underbody protection", nodeNames: ["Skidplate"], category: "kit", defaultVisible: true, accessory: true, view: VIEW.frontLow },
     {
       id: "window-storage",

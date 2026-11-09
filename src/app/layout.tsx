@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={sans.variable}>
       <body className={`${sans.className} ${sans.variable}`}>{children}</body>
     </html>
   );

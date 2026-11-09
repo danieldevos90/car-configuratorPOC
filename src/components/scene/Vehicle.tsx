@@ -18,6 +18,7 @@ import { useThree } from "@react-three/fiber";
 import {
   Box3,
   Group,
+  Mesh,
   Object3D,
   PerspectiveCamera,
   Raycaster,
@@ -69,7 +70,7 @@ function prepareScene(
   textureMaxSize: number,
 ) {
   scene.traverse((child) => {
-    child.castShadow = false;
+    child.castShadow = child.type === "Mesh" || child.type === "SkinnedMesh";
     child.receiveShadow = false;
   });
   sanitizeVehicleMaterials(scene, vehicle, isCompactDevice);
@@ -109,20 +110,6 @@ function slotBox(root: Object3D, vehicle: VehicleDefinition, part: ConfigPart): 
   return box.isEmpty() ? null : box;
 }
 
-/**
- * Wheel sets are grouped by component (tyres, rims, nuts), not per wheel, so
- * frame the corner of the set that faces the camera.
- */
-function facingQuarter(box: Box3, view: PartView): Box3 {
-  const center = box.getCenter(new Vector3());
-  const x = Math.sin(view.azimuth) >= 0;
-  const z = Math.cos(view.azimuth) >= 0;
-  return new Box3(
-    new Vector3(x ? center.x : box.min.x, box.min.y, z ? center.z : box.min.z),
-    new Vector3(x ? box.max.x : center.x, box.max.y, z ? box.max.z : center.z),
-  );
-}
-
 /** Left/right pairs (side steps, storage boxes) span the car; side views frame the near side only. */
 function facingSide(box: Box3, view: PartView): Box3 {
   const side = Math.sin(view.azimuth);
@@ -131,6 +118,86 @@ function facingSide(box: Box3, view: PartView): Box3 {
   if (side > 0) framed.min.x = 0;
   else framed.max.x = 0;
   return framed;
+}
+
+const hubSample = new Vector3();
+
+/**
+ * Hub of the front tyre on the chosen side. The wheel meshes sit on the
+ * ground; anything higher in the same node is the arch, not the hub.
+ */
+function frontHub(root: Object3D, part: ConfigPart, side: number): Vector3 | null {
+  const samples: number[] = [];
+  let minY = Infinity;
+  const consider = (obj: Object3D) => {
+    if (!(obj instanceof Mesh)) return;
+    const attr = obj.geometry?.getAttribute("position");
+    if (!attr) return;
+    obj.updateWorldMatrix(true, false);
+    const step = Math.max(1, Math.floor(attr.count / 8000));
+    for (let i = 0; i < attr.count; i += step) {
+      hubSample.fromBufferAttribute(attr, i).applyMatrix4(obj.matrixWorld);
+      if (side > 0 ? hubSample.x < 0.15 : hubSample.x > -0.15) continue;
+      if (hubSample.y < minY) minY = hubSample.y;
+      samples.push(hubSample.x, hubSample.y, hubSample.z);
+    }
+  };
+  for (const name of part.nodeNames) {
+    const node = root.getObjectByName(name);
+    if (!node) continue;
+    node.updateWorldMatrix(true, true);
+    node.traverse(consider);
+  }
+  if (!samples.length || !Number.isFinite(minY)) return null;
+  const lowCut = minY + 0.78;
+  let frontZ = -Infinity;
+  for (let i = 0; i < samples.length; i += 3) {
+    if (samples[i + 1] > lowCut) continue;
+    if (samples[i + 2] > frontZ) frontZ = samples[i + 2];
+  }
+  if (!Number.isFinite(frontZ)) return null;
+  const hub = new Vector3();
+  let count = 0;
+  let contactY = Infinity;
+  for (let i = 0; i < samples.length; i += 3) {
+    if (samples[i + 1] > lowCut) continue;
+    if (samples[i + 2] < frontZ - 0.85) continue;
+    hub.x += samples[i];
+    hub.z += samples[i + 2];
+    if (samples[i + 1] < contactY) contactY = samples[i + 1];
+    count += 1;
+  }
+  if (!count) return null;
+  hub.x /= count;
+  hub.z /= count;
+  hub.y = contactY + 0.39;
+  return hub;
+}
+
+/**
+ * Sit just above and outboard of the front hub so the rim face fills the
+ * frame. A camera in front of the bumper looks at the valance instead.
+ */
+function flyToWheels(
+  controls: CameraControlsImpl,
+  root: Object3D,
+  part: ConfigPart,
+  view: PartView,
+) {
+  controls.minDistance = 0.8;
+  controls.maxPolarAngle = 1.35;
+  const side = Math.sin(view.azimuth) >= 0 ? 1 : -1;
+  const hub = frontHub(root, part, side);
+  if (!hub) return;
+  void controls.setLookAt(
+    hub.x + side * 2.15,
+    hub.y + 0.72,
+    hub.z + 0.12,
+    hub.x,
+    hub.y,
+    hub.z,
+    true,
+  );
 }
 
 function flyTo(
@@ -145,11 +212,16 @@ function flyTo(
   const vfov = ((perspective.fov ?? 32) * Math.PI) / 180;
   const hfov = 2 * Math.atan(Math.tan(vfov / 2) * (perspective.aspect ?? 1));
   const fov = Math.min(vfov, hfov);
-  const distance = Math.min(12, Math.max(controls.minDistance, (radius / Math.sin(fov / 2)) * 1.15));
+  const fill = 1.15;
+  const distance = Math.min(
+    12,
+    Math.max(controls.minDistance, (radius / Math.sin(fov / 2)) * fill),
+  );
   const s = Math.sin(view.polar);
+  const cameraY = target.y + distance * Math.cos(view.polar);
   void controls.setLookAt(
     target.x + distance * s * Math.sin(view.azimuth),
-    target.y + distance * Math.cos(view.polar),
+    cameraY,
     target.z + distance * s * Math.cos(view.azimuth),
     target.x,
     target.y,
@@ -391,12 +463,30 @@ function VehicleScene({
       void controls.setLookAt(x, y, z, tx, ty, tz, true);
       return;
     }
-    const framed =
-      part.view.camera === "wheels" ? facingQuarter(box, part.view) : facingSide(box, part.view);
+    if (part.view.camera === "wheels") {
+      if (cameraId === "wheels") return;
+      const root = sceneForPart(part, baseScene, kitScene);
+      if (root) flyToWheels(controls, root, part, part.view);
+      return;
+    }
+    const framed = facingSide(box, part.view);
     flyTo(controls, camera, framed, part.view);
     // Only a new request (nonce) should move the camera, not part toggles alone.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest?.nonce, controls]);
+
+  useEffect(() => {
+    if (cameraId !== "wheels" || !controls) return;
+    const hidden = new Set(hiddenPartIds);
+    const part = vehicle.parts.find(
+      (item) => item.category === "wheels" && item.view?.camera === "wheels" && !hidden.has(item.id),
+    );
+    if (!part?.view) return;
+    const root = sceneForPart(part, baseScene, kitScene);
+    if (root) flyToWheels(controls, root, part, part.view);
+    // Entering the wheels camera frames the front wheel once. Switching the rim stays put.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraId, controls]);
 
   /** Customer-facing parts only; inspector toggles (body, engine…) are not pickable. */
   const partByNode = useMemo(() => {
@@ -472,9 +562,9 @@ function VehicleScene({
     baseScene,
   ]);
 
-  const outdoor = studioId === "road";
-  const shadowY = outdoor ? 0.056 : 0.019;
-  const shadowOpacity = outdoor ? 0.82 : 0.34;
+  const outdoor = studioId === "road" || studioId === "alm" || studioId === "wald";
+  const shadowY = outdoor ? 0.056 : 0.016;
+  const shadowOpacity = outdoor ? 0.72 : 0.5;
 
   return (
     <>
@@ -482,11 +572,14 @@ function VehicleScene({
         <primitive object={baseScene} />
         {kitScene ? <primitive object={kitScene} /> : null}
       </group>
-      <WheelContactShadows
-        contacts={wheelContacts}
-        y={shadowY}
-        opacity={shadowOpacity}
-      />
+      {outdoor ? (
+        <WheelContactShadows
+          contacts={wheelContacts}
+          y={shadowY}
+          opacity={shadowOpacity}
+          scale={0.52}
+        />
+      ) : null}
     </>
   );
 }

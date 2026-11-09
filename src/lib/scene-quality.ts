@@ -1,23 +1,5 @@
 export const DESKTOP_MEDIA = "(min-width: 901px)";
 
-type NetworkConnection = {
-  type?: string;
-  effectiveType?: string;
-  saveData?: boolean;
-  downlink?: number;
-  addEventListener?: (type: string, listener: () => void) => void;
-  removeEventListener?: (type: string, listener: () => void) => void;
-};
-
-function getConnection(): NetworkConnection | undefined {
-  const nav = navigator as Navigator & {
-    connection?: NetworkConnection;
-    mozConnection?: NetworkConnection;
-    webkitConnection?: NetworkConnection;
-  };
-  return nav.connection ?? nav.mozConnection ?? nav.webkitConnection;
-}
-
 export function isCompactViewport() {
   return !window.matchMedia(DESKTOP_MEDIA).matches;
 }
@@ -43,26 +25,11 @@ export function sceneDprRange(
 }
 
 /**
- * High-detail extras (grass, clouds, 4K maps). Compact viewports stay on the
- * lite GPU path even on Wi‑Fi — connection speed is not fill-rate.
+ * Desktop 3D always uses the top tier (4K maps, full anisotropy, full IBL).
+ * Compact viewports never mount the 3D stage.
  */
 export function shouldLoadHighDetail(isCompactDevice: boolean) {
-  if (isCompactDevice) return false;
-  const connection = getConnection();
-  if (connection?.saveData) return false;
-
-  const type = connection?.type;
-  if (type === "cellular" || type === "wimax" || type === "bluetooth") return false;
-
-  const effective = connection?.effectiveType;
-  if (effective === "slow-2g" || effective === "2g" || effective === "3g") {
-    return false;
-  }
-  if (typeof connection?.downlink === "number" && connection.downlink > 0 && connection.downlink < 1.5) {
-    return false;
-  }
-
-  return true;
+  return !isCompactDevice;
 }
 
 export function textureCap(isCompactDevice: boolean, highDetail: boolean) {
@@ -73,11 +40,4 @@ export function textureCap(isCompactDevice: boolean, highDetail: boolean) {
 /** PMREM cube face size. 1024 is ~24 MB of IBL; phones stay at 256. */
 export function iblResolution(isCompactDevice: boolean) {
   return isCompactDevice ? 256 : 1024;
-}
-
-export function subscribeNetworkQuality(onChange: () => void) {
-  const connection = getConnection();
-  if (!connection?.addEventListener) return () => {};
-  connection.addEventListener("change", onChange);
-  return () => connection.removeEventListener?.("change", onChange);
 }

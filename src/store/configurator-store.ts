@@ -15,6 +15,7 @@ import {
 } from "@/lib/scene-quality";
 
 export type ConfigSection = "paint" | "interior" | "kit" | "summary";
+export type StageMode = "3d" | "image";
 
 /** Camera fly-to request; `partId: null` frames the whole vehicle. */
 export type FocusRequest = { partId: string | null; nonce: number };
@@ -38,6 +39,22 @@ function isInteriorCamera(id: CameraId) {
 
 function defaultExteriorCamera(studioId: StudioId): CameraId {
   return studioId === "road" ? "road" : "hero";
+}
+
+function cameraForConfigSection(
+  section: ConfigSection,
+  studioId: StudioId,
+): CameraId {
+  switch (section) {
+    case "interior":
+      return CABIN_CAMERA;
+    case "kit":
+      return "three-quarter";
+    case "summary":
+      return "side";
+    case "paint":
+      return defaultExteriorCamera(studioId);
+  }
 }
 
 function resolveExteriorCamera(state: {
@@ -78,6 +95,7 @@ type ConfiguratorState = {
   interiorId: string;
   caliperId: string;
   studioId: StudioId;
+  stageMode: StageMode;
   cameraId: CameraId;
   exteriorCameraId: CameraId;
   configSection: ConfigSection;
@@ -93,7 +111,7 @@ type ConfiguratorState = {
   sceneNavigating: boolean;
   /** Phone / tablet viewport — keep the GPU budget low. */
   isCompactDevice: boolean;
-  /** Wi‑Fi (or desktop without Save-Data): grass, clouds, fuller texture sampling. */
+  /** Desktop 3D: 4K maps, full anisotropy, full IBL. */
   highDetail: boolean;
   textureMaxSize: number;
   setPaint: (id: string) => void;
@@ -102,9 +120,10 @@ type ConfiguratorState = {
   setInterior: (id: string) => void;
   setCaliper: (id: string) => void;
   setConfigSection: (section: ConfigSection) => void;
-  /** Scroll-spy: mark the section in view without flying into the cabin. */
+  /** Scroll-spy: mark the section in view and match the stage to that section. */
   setActiveSection: (section: ConfigSection) => void;
   setStudio: (id: StudioId) => void;
+  setStageMode: (mode: StageMode) => void;
   setCamera: (id: CameraId) => void;
   leaveInteriorCamera: () => void;
   setLightsOn: (on: boolean) => void;
@@ -120,7 +139,8 @@ type ConfiguratorState = {
   setSceneLoading: (loading: boolean) => void;
   setSceneNavigating: (navigating: boolean) => void;
   bootstrapScene: () => void;
-  syncNetworkQuality: () => void;
+  /** Re-read the viewport. Compact layouts drop out of 3D; desktop stays at max quality. */
+  syncViewport: () => void;
 };
 
 export const useConfigurator = create<ConfiguratorState>((set, get) => ({
@@ -128,6 +148,7 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   ...FINISH_DEFAULTS,
   focusRequest: null,
   studioId: "daylight",
+  stageMode: "image",
   cameraId: "hero",
   exteriorCameraId: "hero",
   configSection: "paint",
@@ -136,7 +157,7 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   panelOpen: false,
   auditOpen: false,
   vehicleRadius: 2.8,
-  sceneLoading: true,
+  sceneLoading: false,
   sceneNavigating: false,
   isCompactDevice: true,
   highDetail: false,
@@ -218,27 +239,29 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
       set(enterInteriorView(state));
       return;
     }
-    if (
-      section === state.configSection &&
-      !isInteriorCamera(state.cameraId)
-    ) {
-      return;
-    }
+    const cameraId = cameraForConfigSection(section, state.studioId);
+    if (state.configSection === section && state.cameraId === cameraId) return;
     set({
       configSection: section,
-      ...(isInteriorCamera(state.cameraId)
-        ? { cameraId: resolveExteriorCamera(state) }
-        : {}),
+      cameraId,
+      exteriorCameraId: cameraId,
     });
   },
   setActiveSection: (section) => {
     const state = get();
-    if (section === state.configSection) return;
+    if (section === "interior") {
+      if (state.configSection === "interior" && isInteriorCamera(state.cameraId)) {
+        return;
+      }
+      set(enterInteriorView(state));
+      return;
+    }
+    const cameraId = cameraForConfigSection(section, state.studioId);
+    if (state.configSection === section && state.cameraId === cameraId) return;
     set({
       configSection: section,
-      ...(section !== "interior" && isInteriorCamera(state.cameraId)
-        ? { cameraId: resolveExteriorCamera(state) }
-        : {}),
+      cameraId,
+      exteriorCameraId: cameraId,
     });
   },
   setStudio: (id) => {
@@ -256,6 +279,19 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
         ? state.exteriorCameraId
         : nextCamera,
     });
+  },
+  setStageMode: (mode) => {
+    if (mode === "3d" && (get().isCompactDevice || isCompactViewport())) return;
+    if (mode === "3d") {
+      set({
+        stageMode: "3d",
+        isCompactDevice: false,
+        highDetail: true,
+        textureMaxSize: textureCap(false, true),
+      });
+      return;
+    }
+    set({ stageMode: mode });
   },
   setCamera: (id) => {
     const state = get();
@@ -296,8 +332,15 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
     );
     const shown =
       slot?.partIds.find((id) => !hiddenPartIds.includes(id)) ?? partId;
-    const focus = vehicle.parts.find((part) => part.id === shown)?.view
-      ? { selectedPartId: shown, focusRequest: nextFocus(state.focusRequest, shown) }
+    const shownPart = vehicle.parts.find((part) => part.id === shown);
+    const focus = shownPart?.view
+      ? {
+          selectedPartId: shown,
+          focusRequest: nextFocus(state.focusRequest, shown),
+          ...(shownPart.view.camera === "wheels"
+            ? { cameraId: "wheels" as const, exteriorCameraId: "wheels" as const }
+            : {}),
+        }
       : {};
     if (isInteriorCamera(state.cameraId)) {
       set({
@@ -328,10 +371,15 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
     });
   },
   focusPart: (partId) =>
-    set((state) => ({
-      selectedPartId: partId,
-      focusRequest: nextFocus(state.focusRequest, partId),
-    })),
+    set((state) => {
+      const part = vehicles[state.vehicleId].parts.find((item) => item.id === partId);
+      const wheels = part?.view?.camera === "wheels";
+      return {
+        selectedPartId: partId,
+        focusRequest: nextFocus(state.focusRequest, partId),
+        ...(wheels ? { cameraId: "wheels" as const, exteriorCameraId: "wheels" as const } : {}),
+      };
+    }),
   resetConfiguration: () =>
     set((state) => ({
       ...FINISH_DEFAULTS,
@@ -351,25 +399,25 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
     const isCompactDevice = isCompactViewport();
     const highDetail = shouldLoadHighDetail(isCompactDevice);
     const studioId: StudioId = "daylight";
-    const cameraId = defaultExteriorCamera(studioId);
     set({
       studioId,
-      cameraId,
-      exteriorCameraId: cameraId,
       isCompactDevice,
       highDetail,
       textureMaxSize: textureCap(isCompactDevice, highDetail),
-      panelOpen: !isCompactDevice,
+      panelOpen: true,
+      stageMode: isCompactDevice ? "image" : get().stageMode,
       ...vehicleDefaults(),
       selectedPartId: null,
     });
   },
-  syncNetworkQuality: () => {
-    const isCompactDevice = get().isCompactDevice;
+  syncViewport: () => {
+    const isCompactDevice = isCompactViewport();
     const highDetail = shouldLoadHighDetail(isCompactDevice);
     set({
+      isCompactDevice,
       highDetail,
       textureMaxSize: textureCap(isCompactDevice, highDetail),
+      ...(isCompactDevice ? { stageMode: "image" as const } : {}),
     });
   },
 }));

@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { AdaptiveDpr } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { vehicles } from "@/config/catalog";
 import { useSceneDpr } from "@/hooks/useSceneDpr";
@@ -51,8 +50,6 @@ type ConfiguratorCanvasProps = {
 
 export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
   const vehicleId = useConfigurator((s) => s.vehicleId);
-  const studioId = useConfigurator((s) => s.studioId);
-  const isCompactDevice = useConfigurator((s) => s.isCompactDevice);
   const vehicle = vehicles[vehicleId];
   const [resolved, setResolved] = useState<ResolvedModels | null>(null);
   const [vehicleReady, setVehicleReady] = useState(false);
@@ -82,21 +79,25 @@ export function ConfiguratorCanvas({ onReady }: ConfiguratorCanvasProps) {
     <Canvas
       className="scene-canvas"
       dpr={dpr}
+      shadows="percentage"
       frameloop="always"
-      performance={{ min: isCompactDevice ? 0.5 : 0.7 }}
-      onCreated={(state) => state.invalidate()}
+      performance={{ min: 1 }}
+      onCreated={(state) => {
+        state.gl.setClearColor("#eef0f2");
+        state.invalidate();
+      }}
       gl={{
-        antialias: !isCompactDevice,
+        antialias: true,
         powerPreference: "high-performance",
         alpha: false,
         stencil: false,
         depth: true,
+        preserveDrawingBuffer: true,
       }}
       camera={{ fov: 32, near: 0.1, far: 220, position: [7.8, 2.05, 9.2] }}
     >
-      {isCompactDevice ? <AdaptiveDpr /> : null}
       <SceneBusyReporter pending={!resolved || !vehicleReady} />
-      <Studio studioId={studioId} />
+      <Studio />
       <CameraRig baseDpr={dpr} />
       {resolved ? (
         <Suspense fallback={null}>

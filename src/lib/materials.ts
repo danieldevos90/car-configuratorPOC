@@ -63,6 +63,11 @@ export function sanitizeVehicleMaterials(
       } else if (CHROME_HINT.test(name) && !name.startsWith("int")) {
         mat.metalness = Math.max(mat.metalness, 0.85);
         mat.roughness = Math.min(mat.roughness, 0.22);
+      } else if (/tyre|tire/i.test(name)) {
+        mat.color.set("#1c1e22");
+        mat.metalness = 0;
+        mat.roughness = 0.68;
+        mat.map = null;
       }
 
       if (liteGpu) {
