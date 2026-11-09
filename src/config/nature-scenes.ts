@@ -23,7 +23,7 @@ export function isNatureStudio(id: string): id is NatureStudioId {
 /** Still captured from the live wheels camera in that studio. */
 /** Bump when the wheel photographs change, so a refresh does not keep the previous file. */
 const WHEEL_STILL_REV = "6";
-const VIEW_STILL_REV = "3";
+const VIEW_STILL_REV = "4";
 
 export function angleThumbSrc(camera: CameraId) {
   return `/renders/views/${camera}/gmanufaktur-retro-daylight.jpg?v=${VIEW_STILL_REV}`;

@@ -71,7 +71,7 @@ Zeven kleuren × zeven standen (Hero, Front, Rear, Side, 3/4, Plan, Wide) = 49 f
 
 ### 4. Wheels, 8 kleuren × 6 velgen
 
-Groene close-ups van de vijf niet-chrome velgen zijn kopieën van `public/renders/wheels/{velg}-daylight.jpg` naar `views/wheels/gmanufaktur-{velg}-daylight.jpg`. De groene RETRO-close-up is de Gemini-master en is niet overschreven.
+De zes groene close-ups, ook RETRO chrome, komen uit `public/renders/wheels/{velg}-daylight.jpg`. Dat is dezelfde uitsnede voor elke velg. De eerdere Gemini-close-up van chrome (witte velg, andere hoek) is vervangen.
 
 `gw-wheel-matrix.mjs` herkleurde die zes groene close-ups naar de zeven andere lakken (42 foto’s). De prompt eist dat spatbord, deur en wielkast allemaal de nieuwe kleur zijn, zonder restgroen, en dat velg, band, naafdop, camera en crop gelijk blijven.
 
